@@ -295,6 +295,10 @@
     const on = W.isConnected;
     $('#fighter-chip-av').innerHTML = SAK.avatarSVG(playerLook());
     $('#fighter-chip-name').textContent = profile().name;
+    // Creation is one "Forge a Fighter" path (LT 2026-10-31); returning
+    // players keep "Edit My Fighter" on the chip.
+    const chipAction = $('#fighter-chip-action');
+    if (chipAction) chipAction.textContent = S.profile ? 'EDIT MY FIGHTER' : 'FORGE A FIGHTER';
     $('#wallet-chip').classList.toggle('hidden', !on);
     $('#wallet-addr').textContent = W.shortAddress();
     const balText = solBalance !== null ? `◎ ${solBalance.toFixed(2)} SOL` : '◎ …';
@@ -651,7 +655,7 @@
   function showCreatorStep(step) {
     $('#cr-step-name').classList.toggle('hidden', step !== 'name');
     $('#cr-step-look').classList.toggle('hidden', step !== 'look');
-    $('#cr-title').textContent = crIsNew ? '👤 PICK YOUR FIGHTER' : '👤 CHANGE FIGHTER';
+    $('#cr-title').textContent = crIsNew ? '🔨 FORGE A FIGHTER' : '👤 CHANGE FIGHTER';
     if (step === 'name') { setTimeout(() => $('#fit-name').focus(), 50); return; }
     initPicker();
     if (!crPreview && Scene && Scene.createPreview) {
@@ -676,12 +680,6 @@
     $('#modal-fighter').classList.add('hidden');
     if (crPreview) { crPreview.dispose(); crPreview = null; }
     if (welcomePending) { welcomePending = false; setTimeout(() => toast(`🎁 Welcome bonus: +${fmt(SAK.POINTS.welcomeBonus)} PTS to get slapping`, 2600), 2000); }
-    // FORGE reset: the photo reference is session-only, never persisted.
-    forgeUsed = false;
-    const fp = $('#forge-panel'); if (fp) fp.classList.add('hidden');
-    const fph = $('#forge-photo'); if (fph) { fph.classList.add('hidden'); fph.removeAttribute('src'); }
-    $('#cr-preview').classList.remove('forge-on');
-    const fob = $('#forge-open'); if (fob) fob.classList.remove('hidden');
   }
   /* ---- Fighter picker: random only (premade starters removed 2026-10-25).
    * Returning players open on their SAVED fighter in the 3D preview;
@@ -694,7 +692,9 @@
     const lockBtn = $('#pk-lock');
     if (!lockBtn || pkLocked) return;
     lockBtn.disabled = false;
-    lockBtn.textContent = '🔒 LOCK'; // TEMPORARY: free lock for testing
+    // A wallet is required to lock (LT 2026-10-31): the uniqueness check
+    // runs server-side on every LOCK, so there is no wallet-less path.
+    lockBtn.textContent = (W.isConnected && W.address) ? '🔒 LOCK' : '🔗 CONNECT WALLET TO LOCK'; // TEMPORARY: free lock for testing
   }
   function initPicker() {
     pkLocked = false;
@@ -708,6 +708,7 @@
       SAK.Wallet.onChange(() => { if (!$('#cr-step-look').classList.contains('hidden')) updateLockButton(); });
     }
     renderCustomTraits();
+    renderForgeRows();
     renderCreatorPreview();
   }
   function renderCustomTraits() {
@@ -791,6 +792,7 @@
     pkLocked = false;
     updateLockButton();
     renderCustomTraits();
+    renderForgeRows();
     renderCreatorPreview();
     A.coin();
   });
@@ -798,30 +800,28 @@
     const btn = $('#pk-lock');
     // TEMPORARY: free lock for everyone during testing — remove before mainnet
     if (!pkCustomLook) { toast('🎲 Randomize a fighter first', 2000); return; }
+    // Wallet required to lock (LT 2026-10-31): the combo-uniqueness check
+    // runs server-side, so LOCK always needs a connected wallet.
+    if (!W.isConnected || !W.address) {
+      toast('🔗 Connect your wallet to lock your fighter', 2600);
+      if (typeof openWalletModal === 'function') openWalletModal();
+      return;
+    }
     btn.disabled = true;
     btn.textContent = '⏳ Locking…';
     try {
-      // TEMPORARY: free lock — no payment, no wallet needed. Remove before mainnet.
-      await SAK.FighterLock.lockFighterFree(pkCustomLook);
-      pkLocked = true;
+      // The draft the save path persists must be the picked look.
       crDraft = Object.assign({}, pkCustomLook);
       // Stamp the name/quote the user typed (validated on save path too)
       const nm = $('#cr-name').value.trim(), q = $('#fit-phrase').value.trim();
-      await saveFighterProfile(nm || undefined, q || undefined, { starter_id: null, custom: true });
-      // FORGE Phase 1 marker (local only): a fighter mapped from an
-      // uploaded photo keeps its forge note on the profile. The photo
-      // itself is never saved; the lock path above is unchanged.
-      // Stamp BOTH references: saveFighterProfile's verify-load swaps
-      // the storage state object, so the game's captured `S` goes stale
-      // and a stamp on `S` alone would be overwritten by the next save.
-      if (forgeUsed) {
-        const det = ($('#forge-details') ? $('#forge-details').value.trim() : '');
-        const marker = { fromUpload: true, details: det, at: Date.now() };
-        if (S.profile) S.profile.forge = marker;
-        const st = SAK.Storage.state;
-        if (st && st.profile) st.profile.forge = marker;
-        try { SAK.Storage.save(); } catch (_) {}
-      }
+      // Server-first: saveFighterProfile registers the combo on Supabase
+      // BEFORE any local save. A taken combo returns false and nothing
+      // is saved locally, so a locked fighter is always one of a kind.
+      const ok = await saveFighterProfile(nm || undefined, q || undefined, { starter_id: null, custom: true });
+      if (!ok) { updateLockButton(); return; }
+      // TEMPORARY: free lock — no payment. Remove before mainnet.
+      await SAK.FighterLock.lockFighterFree(pkCustomLook);
+      pkLocked = true;
       btn.textContent = '✅ LOCKED!';
       A.perfect();
       // Auto-sync to Supabase when wallet is connected (for PvP visibility)
@@ -854,15 +854,10 @@
       updateLockButton();
     }
   });
-  /* ---- FORGE FROM PHOTO (Phase 1, off-chain prototype, FREE) --------
-   * Additive creator path: upload a reference photo + a few words, get a
-   * STARTING fighter from a client-side heuristic (palette sampling +
-   * keyword hints), then fix anything with per-layer prev/next controls
-   * and LOCK through the existing lock path. The photo NEVER leaves the
-   * device in Phase 1: no network calls, no uploads, no external APIs.
-   * The saved fighter carries a local-only profile.forge marker
-   * (fromUpload + details text); the photo itself is never persisted. */
-  let forgeUsed = false;
+  /* ---- Per-trait tweak rows (Forge v2, LT 2026-10-31) --------
+   * The photo-upload flow is scrapped. The creator is one path:
+   * RANDOMIZE, then step any single trait with prev/next rows, then
+   * LOCK. Rows cycle pkCustomLook (the picker draft) directly. */
   const FORGE_LAYERS = [
     { layer: 'species', key: 'species', kind: 'id' },
     { layer: 'body', key: 'body', kind: 'id' },
@@ -916,7 +911,7 @@
     renderCreatorPreview();
   }
   function renderForgeRows() {
-    const box = $('#forge-tweaks');
+    const box = $('#pk-tweaks');
     if (!box) return;
     if (!pkCustomLook) { box.innerHTML = ''; return; }
     box.innerHTML = FORGE_LAYERS.map(e =>
@@ -930,218 +925,6 @@
       forgeCycle(b.dataset.forgeLayer, parseInt(b.dataset.forgeDir, 10));
     }));
   }
-  function hexDist(a, b) {
-    const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
-    const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
-    return (pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2 + (pa[2] - pb[2]) ** 2;
-  }
-  function nearestHex(target, list) {
-    let best = list[0], bd = Infinity;
-    for (const h of list) { const d = hexDist(target, h); if (d < bd) { bd = d; best = h; } }
-    return best;
-  }
-  function rgbToHex(r, g, b) {
-    return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
-  }
-  function bandColor(ctx, w, y0, y1) {
-    const data = ctx.getImageData(0, y0, w, y1 - y0).data;
-    let r = 0, g = 0, b = 0, n = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] < 128) continue; // skip transparent pixels
-      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
-    }
-    if (!n) return null;
-    return rgbToHex(r / n, g / n, b / n);
-  }
-  // Starting look from a photo: top band -> hair color, middle -> shirt,
-  // bottom -> pants, each snapped to the nearest palette hex. Deliberately
-  // rough — the tweak rows exist to fix it.
-  function forgeMapFromPhoto(imgEl) {
-    const av = SAK.Account.defaultAvatar();
-    try {
-      const cv = document.createElement('canvas');
-      cv.width = 48; cv.height = 48;
-      const ctx = cv.getContext('2d');
-      ctx.drawImage(imgEl, 0, 0, 48, 48);
-      const hairHex = bandColor(ctx, 48, 0, 16);
-      const shirtHex = bandColor(ctx, 48, 16, 32);
-      const pantsHex = bandColor(ctx, 48, 32, 48);
-      const hairList = forgeValues({ layer: 'hairColor', kind: 'color' });
-      const pantsList = forgeValues({ layer: 'pants', kind: 'color' });
-      const shirtList = forgeValues({ layer: 'shirt', kind: 'color' });
-      if (hairHex && hairList.length) av.hairColor = nearestHex(hairHex, hairList);
-      if (shirtHex && shirtList.length) av.shirt = nearestHex(shirtHex, shirtList);
-      if (pantsHex && pantsList.length) av.pants = nearestHex(pantsHex, pantsList);
-    } catch (e) { console.warn('[SAK] forge palette sampling failed', e); }
-    return av;
-  }
-  // Forge color + skin-tone mapping (fix, 2026-10-30): a color/tone word
-  // next to an attribute word sets THAT attribute — "blue eyes" sets
-  // eyeColor, "blond hair" sets hairColor, "dark skin" sets skin. Bare
-  // color words keep the old behavior (shirt). Skin tones map to exact
-  // SAK.Traits.LAYERS.skin hexes; other scoped colors snap to the target
-  // attribute's real palette via nearestHex. Blond uses a light canonical
-  // so it snaps to Platinum hair instead of Ember.
-  const FORGE_ATTR_WORDS = {
-    skin: 'skin', hair: 'hairColor', eye: 'eyeColor', eyes: 'eyeColor',
-    shirt: 'shirt', pants: 'pants',
-  };
-  const FORGE_COLOR_HEX = {
-    red: '#ff3b5c', blue: '#2f80ff', green: '#2ee6a6', black: '#1f1f2e',
-    white: '#ffffff', blond: '#e9e9f5', blonde: '#e9e9f5', yellow: '#ffe23d',
-    brown: '#7a4a24', orange: '#ff7a1a', pink: '#ff4fa3', purple: '#9b5cff',
-    grey: '#808080', gray: '#808080', gold: '#ffd23f',
-    dark: '#1f1f2e', light: '#e9e9f5', pale: '#ffe0c4', fair: '#f6c9a0',
-    tan: '#e0a77a', olive: '#8a8f5c',
-  };
-  const FORGE_SKIN_TONES = {
-    pale: '#ffe0c4', fair: '#f6c9a0', light: '#f6c9a0', tan: '#e0a77a',
-    medium: '#e0a77a', olive: '#c98b5f', brown: '#7a4a2e', dark: '#7a4a2e',
-    deep: '#7a4a2e',
-  };
-  // Keyword hints: exact word match only; unmatched words are ignored,
-  // never guessed. The color entries below are the bare-word fallback
-  // (shirt); scoped phrases are resolved before this table is consulted.
-  const FORGE_KEYWORDS = {
-    cap: ['head', 'cap'], beanie: ['head', 'beanie'], shades: ['head', 'shades'], glasses: ['head', 'shades'],
-    crown: ['head', 'crown'], headphones: ['head', 'headphones'], cans: ['head', 'headphones'],
-    visor: ['head', 'visor'], tophat: ['head', 'tophat'], halo: ['head', 'halo'],
-    vr: ['head', 'vrheadset'], cowboy: ['head', 'cowboyhat'], bucket: ['head', 'buckethat'],
-    party: ['head', 'partyhat'], eyepatch: ['head', 'eyepatch'], patch: ['head', 'eyepatch'],
-    unicorn: ['head', 'unicorn'], headband: ['head', 'headband'],
-    chain: ['accessory', 'goldchain'], goldchain: ['accessory', 'goldchain'],
-    silverchain: ['accessory', 'silverchain'], icedchain: ['accessory', 'icedchain'], iced: ['accessory', 'icedchain'],
-    sword: ['accessory', 'sword'], katana: ['accessory', 'sword'],
-    watch: ['accessory', 'goldwatch'], backpack: ['accessory', 'backpack'],
-    bald: ['hairStyle', 'bald'], afro: ['hairStyle', 'afro'], mohawk: ['hairStyle', 'mohawk'],
-    dreads: ['hairStyle', 'dreads'], dread: ['hairStyle', 'dreads'], long: ['hairStyle', 'long'],
-    curly: ['hairStyle', 'curly'], mullet: ['hairStyle', 'mullet'], pigtails: ['hairStyle', 'pigtails'],
-    ponytail: ['hairStyle', 'ponytail'], spiky: ['hairStyle', 'spiky'], spiked: ['hairStyle', 'spiky'],
-    buzz: ['hairStyle', 'buzz'], bun: ['hairStyle', 'bun'], fringe: ['hairStyle', 'fringe'], bangs: ['hairStyle', 'fringe'],
-    angry: ['eyes', 'angry'], sleepy: ['eyes', 'sleepy'],
-    chonk: ['body', 'chonk'], chubby: ['body', 'chonk'], gym: ['body', 'gymbro'], smol: ['body', 'smol'],
-    tiny: ['body', 'smol'], noodle: ['body', 'noodle'], skinny: ['body', 'noodle'],
-    bear: ['species', 'bear'], bull: ['species', 'bull'], ape: ['species', 'ape'], monkey: ['species', 'ape'],
-    dog: ['species', 'dog'], cat: ['species', 'cat'], rabbit: ['species', 'rabbit'], bunny: ['species', 'rabbit'],
-    panda: ['species', 'panda'],
-    bitcoin: ['print', 'btc'], btc: ['print', 'btc'], solana: ['print', 'sol'], fomo: ['print', 'fomo'],
-    stonks: ['print', 'stonks'], pump: ['print', 'pumpfun'], zcash: ['print', 'zec'], zec: ['print', 'zec'],
-    hoodie: ['outfit', 'hoodie'], suit: ['outfit', 'suit'], tank: ['outfit', 'tank'], gi: ['outfit', 'gi'],
-    robe: ['outfit', 'royal'], flames: ['outfit', 'flames'], flame: ['outfit', 'flames'], money: ['outfit', 'money'],
-    chart: ['outfit', 'chart'],
-    red: ['shirt', '#ff3b5c'], blue: ['shirt', '#2f80ff'], green: ['shirt', '#2ee6a6'],
-    pink: ['shirt', '#ff4fa3'], yellow: ['shirt', '#ffe23d'], gold: ['shirt', '#ffe23d'],
-    purple: ['shirt', '#9b5cff'], orange: ['shirt', '#ff7a1a'], black: ['shirt', '#1f1f2e'], white: ['shirt', '#ffffff'],
-  };
-  function forgeApplyDetails(text) {
-    if (!pkCustomLook) return [];
-    const words = String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-    const applied = [];
-    const used = new Set();
-    const setVal = (key, val, w) => { if (pkCustomLook[key] !== val) { pkCustomLook[key] = val; applied.push(w); } };
-    // Pass 1 — scoped: a color/tone word beside an attribute word sets
-    // that attribute (following word wins, then preceding).
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      const canon = FORGE_COLOR_HEX[w];
-      const isTone = w in FORGE_SKIN_TONES;
-      if (!canon && !isTone) continue;
-      const attr = FORGE_ATTR_WORDS[words[i + 1]] || FORGE_ATTR_WORDS[words[i - 1]];
-      if (!attr) continue;
-      let val = null;
-      if (attr === 'skin') val = isTone ? FORGE_SKIN_TONES[w] : nearestHex(canon, forgeValues({ layer: 'skin', kind: 'color' }));
-      else {
-        const list = forgeValues({ layer: attr, kind: 'color' });
-        if (list.length) val = nearestHex(canon, list);
-      }
-      if (!val) continue;
-      setVal(attr, val, w);
-      used.add(i);
-    }
-    // Pass 2 — skin tones: any tone word when 'skin' appears in the text
-    // (non-adjacent phrasing like "skin tone dark"), plus bare tone words,
-    // which most naturally describe skin and previously mapped to nothing.
-    // Bare "brown" stays a shirt color (pass 3) unless 'skin' is present.
-    const hasSkinWord = words.includes('skin');
-    for (let i = 0; i < words.length; i++) {
-      if (used.has(i)) continue;
-      const w = words[i];
-      if (!(w in FORGE_SKIN_TONES)) continue;
-      if (w === 'brown' && !hasSkinWord) continue;
-      setVal('skin', FORGE_SKIN_TONES[w], w);
-      used.add(i);
-    }
-    // Pass 3 — single-word keywords (existing behavior) for the rest.
-    // Bare color words new to the table snap to the shirt palette; old
-    // bare colors keep their exact hex via FORGE_KEYWORDS above.
-    for (let i = 0; i < words.length; i++) {
-      if (used.has(i)) continue;
-      const w = words[i];
-      const hit = FORGE_KEYWORDS[w];
-      if (hit) { const [key, val] = hit; setVal(key, val, w); continue; }
-      const canon = FORGE_COLOR_HEX[w];
-      if (canon) {
-        const list = forgeValues({ layer: 'shirt', kind: 'color' });
-        if (list.length) setVal('shirt', nearestHex(canon, list), w);
-      }
-    }
-    if (applied.length) { pkLocked = false; updateLockButton(); renderCustomTraits(); renderForgeRows(); renderCreatorPreview(); }
-    return applied;
-  }
-  const forgeOpenBtn = $('#forge-open');
-  if (forgeOpenBtn) forgeOpenBtn.addEventListener('click', () => {
-    A.click();
-    const panel = $('#forge-panel');
-    if (!panel) return;
-    panel.classList.remove('hidden');
-    $('#cr-preview').classList.add('forge-on');
-    forgeOpenBtn.classList.add('hidden');
-    renderForgeRows();
-  });
-  const forgeCloseBtn = $('#forge-close');
-  if (forgeCloseBtn) forgeCloseBtn.addEventListener('click', () => {
-    A.click();
-    const panel = $('#forge-panel');
-    if (panel) panel.classList.add('hidden');
-    $('#cr-preview').classList.remove('forge-on');
-    const photo = $('#forge-photo');
-    if (photo) photo.classList.add('hidden');
-    if (forgeOpenBtn) forgeOpenBtn.classList.remove('hidden');
-  });
-  const forgeFile = $('#forge-file');
-  if (forgeFile) forgeFile.addEventListener('change', () => {
-    const file = forgeFile.files && forgeFile.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = String(reader.result);
-      const photo = $('#forge-photo');
-      if (!photo) return;
-      photo.onload = () => {
-        pkCustomLook = forgeMapFromPhoto(photo);
-        forgeUsed = true;
-        const det = $('#forge-details') ? $('#forge-details').value.trim() : '';
-        if (det) forgeApplyDetails(det); // keywords overlay the mapped look
-        pkLocked = false;
-        updateLockButton();
-        renderCustomTraits();
-        renderForgeRows();
-        renderCreatorPreview();
-        toast('📸 Forge look mapped — tweak anything, then LOCK', 2600);
-      };
-      photo.src = url;
-      photo.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
-  });
-  const forgeDetailsBtn = $('#forge-details-apply');
-  if (forgeDetailsBtn) forgeDetailsBtn.addEventListener('click', () => {
-    A.click();
-    const det = $('#forge-details') ? $('#forge-details').value.trim() : '';
-    if (!pkCustomLook) { toast('🎲 Upload a photo first', 2000); return; }
-    const applied = forgeApplyDetails(det);
-    toast(applied.length ? `✨ Applied: ${applied.join(', ')}` : 'No matching traits — tweak manually', 2200);
-  });
   $('#cr-later').addEventListener('click', () => { closeCreator(); if (playAfterFighter) setTimeout(openSolo, 50); });   // play as guest
   $('#cr-cancel').addEventListener('click', () => { if (crIsNew) showCreatorStep('name'); else closeCreator(); });
   // Manual fighter sync to Supabase for PvP visibility
@@ -1188,6 +971,29 @@
     // Resolve the avatar: the random draft (starters removed 2026-10-25)
     const avatar = crDraft, starterId = extra.starter_id || null;
     const cleanAvatar = SAK.Account.sanitize(avatar);
+    // Combo uniqueness (LT 2026-10-31): a wallet is required to lock, and
+    // the combo (look minus accessory — accessory differences do NOT make
+    // a new combo) is registered on Supabase BEFORE anything saves
+    // locally. The profiles combo_hash unique index rejects a taken combo
+    // with 23505; that aborts with no local save. Any other server error
+    // also aborts (fail closed) so a lock never silently skips the check.
+    if (!W.isConnected || !W.address) {
+      $('#cr-look-err').textContent = 'Connect your wallet to lock your fighter';
+      return false;
+    }
+    try {
+      await SAK.Api.saveProfile(W.address, {
+        name: v.ok, fighter_look: cleanAvatar, x_handle: xh,
+      });
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (/23505|duplicate key/i.test(msg)) {
+        $('#cr-look-err').textContent = 'That combination is taken — change any trait';
+      } else {
+        $('#cr-look-err').textContent = 'Couldn\'t verify uniqueness — check connection and try again';
+      }
+      return false;
+    }
     if (S.profile) Object.assign(S.profile, {
       name: v.ok, phrase: ph.ok, x_handle: xh, avatar: cleanAvatar,
       starter_id: starterId || null,
