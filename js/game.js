@@ -887,7 +887,11 @@
       return sw + (hit ? hit.label : String(val || '').toUpperCase());
     }
     const hit = L.find(t => t.id === val);
-    return (hit ? hit.label : String(val || '')).toUpperCase();
+    let label = hit ? hit.label : String(val || '');
+    // Never render a blank row value (LT 2026-11-01: an Outfit row showed
+    // empty on-device): outfit defaults to TEE, anything else gets a dash.
+    if (!label) label = entry.layer === 'outfit' ? 'tee' : '—';
+    return label.toUpperCase();
   }
   function forgeRowLabel(entry) {
     const L = (SAK.Traits && SAK.Traits.LAYER_LABELS && SAK.Traits.LAYER_LABELS[entry.layer]);

@@ -1646,9 +1646,19 @@ body.on-menu #ticker { display: none; }
 #cr-preview.forge-on #cr-canvas { flex: 1 1 0; min-width: 0; }
 #forge-photo { width: 38%; object-fit: cover; border-radius: 12px; border: 2px solid #ffd23f55; align-self: stretch; }
 #forge-panel { margin-top: 10px; background: rgba(0,0,0,.25); border-radius: 14px; padding: 10px; }
-.forge-tweaks { margin-top: 10px; }
-.forge-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-family: var(--font); font-size: 13px; }
+/* Traits wheel (LT 2026-11-01): a fixed 4-row viewport with its own
+ * scroll, so browsing traits never pushes the fighter preview away.
+ * Rows are exactly 44px tall (border-box), so 4 rows = 176px with no
+ * partial row peeking. overscroll-behavior keeps wheel scrolling from
+ * scrolling the modal itself. */
+.forge-tweaks { margin-top: 10px; height: 176px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding-right: 2px; }
+.forge-row { display: flex; align-items: center; gap: 8px; margin: 0; height: 44px; box-sizing: border-box; font-family: var(--font); font-size: 13px; border-bottom: 1px solid #00000012; }
+.forge-row:last-child { border-bottom: 0; }
+.forge-scroll-hint { text-align: center; font-family: var(--font); font-size: 12px; opacity: .55; margin-top: 6px; }
 .forge-row-label { flex: 0 0 84px; opacity: .7; }
-.forge-row-val { flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.forge-step { font-family: var(--font); font-size: 14px; background: #ffffff22; color: #fff; border: 1px solid #ffffff44; border-radius: 8px; padding: 3px 9px; }
-.forge-step:active { transform: translateY(1px); }
+.forge-row-val { flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+/* Steppers must read on the WHITE creator card: the old translucent-white
+ * style (built for the dark Forge panel) rendered white-on-white here,
+ * which is why the buttons looked missing on-device (LT 2026-11-01). */
+.forge-step { font-family: var(--font); font-size: 16px; line-height: 1; background: var(--ink); color: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 7px 11px; min-width: 38px; box-shadow: 0 3px 0 #00000033; cursor: pointer; }
+.forge-step:active { transform: translateY(2px); box-shadow: 0 1px 0 #00000033; }
