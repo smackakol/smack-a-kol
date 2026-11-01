@@ -44,28 +44,13 @@ SAK.BETS = [0, 100, 250, 500, 1000, 2500];
  * little so free players always progress. */
 SAK.POINT_REWARDS = { lossBase: 10, perHitLanded: 3, perPerfect: 10, streakPct: 0.02, streakCap: 25 };
 
-/* Player tiers by lifetime PTS. Higher tiers boost Stake Vault yield. */
+/* Player tiers by lifetime PTS (menu badge). */
 SAK.TIERS = [
   { name: 'Bronze',  min: 0,      color: '#d9884a', yieldBoost: 0 },
   { name: 'Silver',  min: 5000,   color: '#d6dbe8', yieldBoost: 0.05 },
   { name: 'Gold',    min: 25000,  color: '#ffd23f', yieldBoost: 0.10 },
   { name: 'Diamond', min: 100000, color: '#7ae8ff', yieldBoost: 0.20 },
 ];
-
-/* Stake Vault (mock, PTS). APR accrues continuously; `demoTimeScale` speeds
- * up time so yield is visible in a prototype (1440 => 1 real minute = 1 day).
- * Boost tiers multiply PTS earned from wins AND bet payouts. */
-SAK.STAKING = {
-  apr: 0.36,
-  demoTimeScale: 1440,
-  tiers: [
-    { min: 0,     name: 'None',    boost: 0,    color: '#a49bc4' },
-    { min: 500,   name: 'Bronze',  boost: 0.10, color: '#d9884a' },
-    { min: 2000,  name: 'Silver',  boost: 0.25, color: '#d6dbe8' },
-    { min: 5000,  name: 'Gold',    boost: 0.50, color: '#ffd23f' },
-    { min: 15000, name: 'Diamond', boost: 1.00, color: '#7ae8ff' }
-  ]
-};
 
 /* ---- Player base stats + upgrade economy --------------------------------- */
 SAK.PLAYER = {
@@ -127,9 +112,9 @@ SAK.METER = {
 };
 
 /* Bet reward formula (PTS; on win, only if a bet was placed):
- *   payout = (bet * kol.payout
+ *   payout = bet * kol.payout
  *          + bet * perfectBonus * min(perfects, perfectBonusCap)
- *          + bet * streakBonus  * min(streakBeforeWin, streakBonusCap)) * (1 + vaultBoost)
+ *          + bet * streakBonus  * min(streakBeforeWin, streakBonusCap)
  * On loss the bet (escrowed when the fight starts) is forfeited. */
 SAK.REWARDS = { perfectBonus: 0.05, perfectBonusCap: 5, streakBonus: 0.05, streakBonusCap: 5 };
 

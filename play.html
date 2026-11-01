@@ -12,7 +12,7 @@
   <!-- Chunky game font (optional – falls back to system fonts offline) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=tweaks-1" />
+  <link rel="stylesheet" href="css/style.css?v=novault-1" />
 </head>
 <body>
 <div id="app">
@@ -70,15 +70,12 @@
         <button id="btn-pvp" class="btn btn-red m1-pvp-card">⚔ PVP LOBBY<span id="pvp-btn-badge" class="pvp-btn-badge hidden"></span><small class="btn-sub">Challenge a player · Bo5</small></button>
         <!-- Referral card (existing ID preserved) -->
         <button id="btn-refer" class="btn btn-purple m1-refer">🎁 REFER & EARN<small class="btn-sub">Give 250 PTS · Get 250 PTS</small></button>
-        <div class="row">
-          <button id="btn-vault" class="btn btn-green">🏦 STAKE PTS<small class="btn-sub" id="vault-sub">earn yield + boost</small></button>
-        </div>
         <button id="btn-shop" class="btn btn-yellow">🛒 SHOP / UPGRADES<small class="btn-sub" id="shop-sub">❤ HEALTH · ✊ POWER · 🥊 GLOVES</small></button>
         <button id="btn-rescue" class="btn btn-grey hidden">🛟 BROKE? CLAIM FREE PTS</button>
       </div>
       <div id="menu-stats" class="menu-stats"></div>
       <p class="tagline m1-tagline">Slap the shillers. Stack the <b>points</b>.</p>
-      <p class="fine">Free to play · earn PTS · bet &amp; stake PTS · wallet is a mock Solana placeholder<br>All KOLs are fictional parody cartoons — not affiliated with or depicting real people.</p>
+      <p class="fine">Free to play · earn PTS · bet PTS · wallet is a mock Solana placeholder<br>All KOLs are fictional parody cartoons — not affiliated with or depicting real people.</p>
       <p class="m1-disclaimer">Wagering involves risk — only wager what you can afford to lose. All fighters are fictional parody cartoons, not real people, and are not affiliated with or meant to depict anyone.</p>
       <div class="m1-xfeed">
         <a class="m1-xlink" href="https://x.com/smackakol" target="_blank" rel="noopener">𝕏 Follow @smackakol on X</a>
@@ -266,28 +263,6 @@
         <button class="btn btn-purple" id="wallet-jupiter" style="width:100%">🪐 Jupiter Mobile <small class="btn-sub">via WalletConnect</small></button>
       </div>
       <p class="fine hidden" id="wallet-jup-hint">Approve in the Jupiter app, then switch back here — iOS won't return you automatically.</p>
-    </div>
-  </div>
-
-  <div id="modal-vault" class="modal hidden">
-    <div class="modal-card vault-card">
-      <h3>🏦 STAKE VAULT</h3>
-      <p class="fine dark">Stake PTS to earn PTS yield and boost every reward (wins + bet payouts). In-game points only for now.</p>
-      <div class="vault-stats">
-        <div><small>STAKED</small><b id="v-staked">0</b></div>
-        <div><small>APR</small><b id="v-apr">24%</b></div>
-        <div><small>YIELD</small><b id="v-yield">0.00</b></div>
-      </div>
-      <div class="vault-tier" id="v-tier"></div>
-      <div class="tier-list" id="v-tiers"></div>
-      <div class="vault-amounts" id="v-amounts"></div>
-      <div class="row">
-        <button class="btn btn-green" id="v-stake">STAKE</button>
-        <button class="btn btn-grey" id="v-unstake">UNSTAKE</button>
-      </div>
-      <button class="btn btn-yellow" id="v-claim">CLAIM YIELD</button>
-      <p class="fine dark" id="v-note"></p>
-      <button class="btn btn-grey" data-close>CLOSE</button>
     </div>
   </div>
 
@@ -621,14 +596,14 @@
 <!-- Three.js r158 (classic build, vendored so the game works offline / from file://) -->
 <script src="vendor/three.min.js"></script>
 <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
-<script src="js/config.js?v=gloves-1"></script>
+<script src="js/config.js?v=novault-1"></script>
 <script src="js/roster.js?v=maxkol-1"></script>
-<script src="js/storage.js?v=maxkol-1"></script>
+<script src="js/storage.js?v=novault-1"></script>
 <script src="js/account.js?v=traitsplit-1"></script>
 <script src="js/traits.js?v=traitsplit-1"></script>
 <script src="js/wallet.js?v=https-fix-2"></script>
 <script src="js/walletconnect.js?v=wc-2"></script>
-<script src="js/economy.js?v=https-fix-2"></script>
+<script src="js/economy.js?v=novault-1"></script>
 <script src="js/matchmaking.js?v=https-fix-2"></script>
 <script src="js/leaderboard.js?v=https-fix-2"></script>
 <script src="js/audio.js?v=missclean-1"></script>
@@ -645,7 +620,7 @@
 <script src="js/pvp-sync.js?v=stuck-1"></script>
 <script src="js/solana-house.js?v=7"></script>
 <script src="js/contracts.js?v=1"></script>
-<script src="js/game-v3.js?v=tweaks-1"></script>
+<script src="js/game-v3.js?v=novault-1"></script>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </body>
 </html>

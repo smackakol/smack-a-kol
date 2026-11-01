@@ -11,7 +11,6 @@ SAK.Storage = (function () {
       wallet: { connected: false, address: null, provider: 'mock' },
       points: 0,                       // PTS — the only currency (for now)
       welcomeGranted: false,           // welcome bonus is granted once
-      staking: { amount: 0, since: null, accrued: 0 },  // Stake Vault (PTS)
       upgrades: { health: 0, power: 0 },
       powerups: { fist: 0, helmet: 1, rage: 1 },   // consumable inventory (starter pack)
       lastFreeFistDate: null,          // YYYY-MM-DD of last daily free Golden Fist
@@ -56,7 +55,28 @@ SAK.Storage = (function () {
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      state = merge(defaults(), raw ? JSON.parse(raw) : null);
+      const saved = raw ? JSON.parse(raw) : null;
+      // Vault retirement migration (LT 2026-11-01): the Stake Vault is
+      // gone. Return every staked PTS + accrued/unsettled yield to the
+      // spendable balance BEFORE the merge drops the retired key, so no
+      // player loses points. Runs once: afterwards the save carries no
+      // staking amount. APR/demoTimeScale are the retired vault's own.
+      if (saved && saved.staking && (saved.staking.amount > 0 || saved.staking.accrued > 0)) {
+        const lp = (saved.stats && saved.stats.lifetimePts) || 0;
+        let yb = 0;
+        for (const t of (SAK.TIERS || [])) if (lp >= t.min) yb = t.yieldBoost || 0;
+        let unsettled = 0;
+        if (saved.staking.amount > 0 && saved.staking.since) {
+          const sec = (Date.now() - saved.staking.since) / 1000 * 1440;
+          unsettled = saved.staking.amount * 0.36 * (1 + yb) * sec / (365 * 86400);
+        }
+        saved.points = (saved.points || 0) + Math.floor(saved.staking.amount)
+          + Math.floor((saved.staking.accrued || 0) + unsettled);
+        saved.staking = { amount: 0, since: null, accrued: 0 };
+        saved._vaultRetired = true;
+      }
+      state = merge(defaults(), saved);
+      if (saved && saved._vaultRetired) save();
       // One-time migration: turn background music on for everyone.
       // Users can still turn it off in Settings — that choice sticks.
       if (!state.settings.musicMigrated) {

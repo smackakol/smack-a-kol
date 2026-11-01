@@ -2,7 +2,7 @@
  * Smack-a-KOL — game controller (screens, fight state machine, economy UI).
  * -------------------------------------------------------------------------
  * Economy (points only for now): matches are FREE and pay PTS; optionally
- * bet PTS for a bigger payout; stake PTS in the Vault for yield + boost.
+ * bet PTS for a bigger payout.
  * Upgrades / Golden Fist cost PTS. Wallet connect is a mock Solana
  * placeholder. Roster = built-in parody KOLs + user-submitted KOLs.
  *
@@ -24,7 +24,7 @@
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
   const S = SAK.Storage.load();      // persistent save
-  const W = SAK.Wallet, A = SAK.Audio, P = SAK.Points, V = SAK.Vault;
+  const W = SAK.Wallet, A = SAK.Audio, P = SAK.Points;
   let Scene = null;                  // SAK.Scene3D once WebGL is up
   let MeterLocal = null;                 // private per-device meter (local player only)
   let RevealDial = null;                 // inline post-lock dual-needle dial
@@ -45,7 +45,8 @@
   const gloveState = () => { if (!S.gloves) S.gloves = { owned: ['wrap'], equipped: 'wrap' }; return S.gloves; };
   const snapshotGlove = () => { const g = gloveState(); const t = gloveTier(g.equipped); return { id: t.id, bonus: t.bonus, label: gloveLabel(t.id) }; };
   const meterSpeed = kol => SAK.METER.baseSpeed + (kol.difficulty - 1) * SAK.METER.speedPerDifficulty;
-  const boosted = n => Math.round(n * (1 + V.boost));
+  // Vault retired (LT 2026-11-01): no boost factor anymore, payouts are flat.
+  const boosted = n => Math.round(n);
 
   /* ------------------------------------------------------- player fighter */
   const DEFAULT_PHRASE = 'gm. prepare to get slapped.';
@@ -312,13 +313,11 @@
       : '👛 CONNECT WALLET<small class="btn-sub">Phantom · Solflare</small>';
     $('#btn-connect').classList.toggle('btn-purple', !on);
     $('#btn-connect').classList.toggle('btn-grey', on);
-    $('#vault-sub').textContent = V.staked > 0 ? `${fmt(V.staked)} staked · ${V.tier.name}` : 'earn yield + boost';
-    $('#btn-rescue').classList.toggle('hidden', !(S.points < SAK.POINTS.rescueThreshold && V.staked === 0));
+    $('#btn-rescue').classList.toggle('hidden', !(S.points < SAK.POINTS.rescueThreshold));
     const st = S.stats;
     const tier = SAK.playerTier ? SAK.playerTier() : SAK.TIERS[0];
     $('#menu-stats').innerHTML = `<span>🏆 ${st.wins}W / ${st.losses}L</span><span>🔥 Streak ${st.streak}</span><span style="color:${tier.color};font-weight:700">◆ ${tier.name}</span><span>❤ Lv${S.upgrades.health} ✊ Lv${S.upgrades.power}</span>`
-      + (V.boost ? `<span class="boost-tag">⚡ +${Math.round(V.boost * 100)}% boost</span>` : '')
-      + (tier.yieldBoost ? `<span class="boost-tag" style="border-color:${tier.color}">🏦 +${Math.round(tier.yieldBoost * 100)}% yield</span>` : '');
+
     $('#set-wallet').textContent = on ? `Wallet: ${W.address}` : 'Wallet not connected';
     $('#btn-disconnect').classList.toggle('hidden', !on);
     renderShopStats();
@@ -1103,7 +1102,6 @@
     }
     renderMenu();
   });
-  $('#btn-vault').addEventListener('click', () => { A.unlock(); A.click(); openVault(); });
   $('#btn-rescue').addEventListener('click', () => {
     if (S.points >= SAK.POINTS.rescueThreshold) return;
     P.add(SAK.POINTS.rescueAmount, false);
@@ -1204,7 +1202,7 @@
       </div>
       <div class="kd-money">
         <div>WIN ${ptsHTML()}<b>+${fmt(modePts(k, selectedMode))}</b></div>
-        <div>BET PAYS <b style="color:#2ee66b">x${k.payout.toFixed(1)}</b>${V.boost ? ` <span class="boost-tag">+${Math.round(V.boost * 100)}%</span>` : ''}</div>
+        <div>BET PAYS <b style="color:#2ee66b">x${k.payout.toFixed(1)}</b></div>
       </div>
       ${k.custom ? `<button class="kd-remove" id="btn-remove-kol">🗑 Remove fan KOL</button>` : ''}`;
     if ($('#btn-remove-kol')) $('#btn-remove-kol').addEventListener('click', () => removeCustom(k.id));
@@ -2238,7 +2236,6 @@
       }, 500);
     }
     const modeMult = SAK.MODES[F.mode].ptsMult;
-    const boost = V.boost, boostMul = 1 + boost;
     const streakBefore = st.streak;
     st.perfects += F.perfects;
     st.biggestHit = Math.max(st.biggestHit, F.maxHit);
@@ -2267,8 +2264,6 @@
       if (tier.mult > 1) { rows.push([`Tier bonus (${tier.name} x${tier.mult})`, pts * (tier.mult - 1)]); pts = pts * tier.mult; }
     }
     if (win && F.glove && F.glove.bonus) { rows.push([`Glove bonus (${F.glove.label} +${Math.round(F.glove.bonus * 100)}%)`, pts * F.glove.bonus]); pts = Math.round(pts * (1 + F.glove.bonus)); }
-    if (boost) rows.push([`Vault boost (${V.tier.name} +${Math.round(boost * 100)}%)`, pts * boost]);
-    pts = Math.round(pts * boostMul);
     // Round row values once so displayed lines sum exactly to MATCH PTS (remainder on last row)
     {
       let acc = 0;
@@ -2287,7 +2282,7 @@
         const perfectBonus = F.bet * R.perfectBonus * Math.min(F.perfects, R.perfectBonusCap);
         const streakBonus = F.bet * R.streakBonus * Math.min(streakBefore, R.streakBonusCap);
         const sub = base + perfectBonus + streakBonus;
-        betTotal = Math.round(sub * boostMul);
+        betTotal = Math.round(sub);
         P.add(F.bet, false);                 // stake returned (not "earned")
         P.add(betTotal - F.bet, true);       // profit counts towards lifetime PTS
         betHtml = `
@@ -2295,7 +2290,6 @@
           <div><span>Bet ${fmt(F.bet)} × ${k.payout.toFixed(1)}</span><b>+${fmt(base)}</b></div>
           ${perfectBonus ? `<div><span>Perfect bonus</span><b>+${fmt(perfectBonus)}</b></div>` : ''}
           ${streakBonus ? `<div><span>Streak bonus</span><b>+${fmt(streakBonus)}</b></div>` : ''}
-          ${boost ? `<div><span>Vault boost +${Math.round(boost * 100)}%</span><b>+${fmt(sub * boost)}</b></div>` : ''}
           <div class="total"><span>BET PAYOUT</span><span>${ptsHTML('')} ${fmt(betTotal)}</span></div>`;
       } else if (draw) {
         P.add(F.bet, false);
@@ -2634,7 +2628,6 @@
           bet = { lines: [[`Bet ${fmt(F.bet)} × ${k.payout.toFixed(1)}`, '+' + fmt(base)]], total: fmt(betTotal) };
           if (perfectBonus) bet.lines.push(['Perfect bonus', '+' + fmt(perfectBonus)]);
           if (streakBonus) bet.lines.push(['Streak bonus', '+' + fmt(streakBonus)]);
-          if (boost) bet.lines.push([`Vault boost +${Math.round(boost * 100)}%`, '+' + fmt(sub2 * boost)]);
         } else if (draw) bet = { lines: [['Draw: bet refunded', fmt(F.bet)]], total: null };
         else bet = { lines: [['Bet got rugged', '−' + fmt(F.bet), 'neg']], total: null };
       }
@@ -2731,52 +2724,6 @@
     } catch (e) {
       prompt('Copy your referral link:', link);
     }
-  });
-
-  /* ================================================================= VAULT */
-  let vaultAmt = 500, vaultTimer = 0;
-  function openVault() {
-    renderVault();
-    $('#modal-vault').classList.remove('hidden');
-    clearInterval(vaultTimer);
-    vaultTimer = setInterval(() => {
-      if ($('#modal-vault').classList.contains('hidden')) return clearInterval(vaultTimer);
-      $('#v-yield').textContent = V.pending.toFixed(2);
-    }, 200);
-  }
-  function renderVault() {
-    const C = SAK.STAKING, t = V.tier, nx = V.nextTier();
-    $('#v-staked').textContent = fmt(V.staked);
-    $('#v-apr').textContent = Math.round(C.apr * 100) + '%';
-    $('#v-yield').textContent = V.pending.toFixed(2);
-    $('#v-tier').innerHTML = `TIER: <span style="color:${t.color}">${t.name}</span> · +${Math.round(t.boost * 100)}% rewards`
-      + (nx ? `<br><small style="font-size:12px;opacity:.8">Stake ${fmt(nx.min - V.staked)} more for ${nx.name} (+${Math.round(nx.boost * 100)}%)</small>` : '');
-    $('#v-tiers').innerHTML = C.tiers.slice(1).map(x => `<div class="${V.staked >= x.min ? 'on' : ''}" style="background:${x.color}">${x.name}<br>${x.min >= 1000 ? x.min / 1000 + 'K' : x.min}<br>+${Math.round(x.boost * 100)}%</div>`).join('');
-    const opts = [100, 500, 1000, 5000];
-    $('#v-amounts').innerHTML = opts.map(n => `<button data-amt="${n}" class="${n === vaultAmt ? 'selected' : ''}">${fmt(n)}</button>`).join('')
-      + `<button data-amt="all" class="${vaultAmt === 'all' ? 'selected' : ''}">MAX</button>`;
-    $$('#v-amounts button').forEach(b => b.onclick = () => { vaultAmt = b.dataset.amt === 'all' ? 'all' : +b.dataset.amt; A.click(); renderVault(); });
-    const stakeN = vaultAmt === 'all' ? S.points : vaultAmt, unN = vaultAmt === 'all' ? V.staked : Math.min(vaultAmt, V.staked);
-    $('#v-stake').textContent = `STAKE ${fmt(stakeN)}`;
-    $('#v-stake').disabled = stakeN <= 0 || !P.canAfford(stakeN);
-    $('#v-unstake').textContent = `UNSTAKE ${fmt(unN)}`;
-    $('#v-unstake').disabled = V.staked <= 0;
-    $('#v-note').textContent = `Spendable: ${fmt(S.points)} PTS. Yield is demo-accelerated (1 real min ≈ ${C.demoTimeScale / 1440} day). Staked PTS can't be spent or bet.`;
-  }
-  $('#v-stake').addEventListener('click', () => {
-    const n = vaultAmt === 'all' ? S.points : vaultAmt;
-    if (V.stake(n)) { A.coin(); toast(`Staked ${fmt(n)} PTS · tier ${V.tier.name}`); }
-    renderVault(); renderMenu();
-  });
-  $('#v-unstake').addEventListener('click', () => {
-    const n = vaultAmt === 'all' ? V.staked : Math.min(vaultAmt, V.staked);
-    if (V.unstake(n)) { A.coin(); toast(`Unstaked ${fmt(n)} PTS`); }
-    renderVault(); renderMenu();
-  });
-  $('#v-claim').addEventListener('click', () => {
-    const got = V.claim();
-    if (got) { A.coin(); toast(`Claimed ${fmt(got)} PTS yield`); } else toast('Not enough yield yet (min 1 PTS)');
-    renderVault();
   });
 
   /* =========================================================== LEADERBOARD */
@@ -3405,12 +3352,11 @@
       pvpWager = b; A.click(); openPvp();
     });
     }
-    // Payout = wager × opponent multiplier (x1.6–x2.65) × (1 + vault boost) — same as fight stake tag
+    // Payout = wager × opponent multiplier (x1.6–x2.65) — same as fight stake tag
     const _pwh = $('#pvp-wager-hint');
     if (_pwh && pvpWager) {
       const lo = boosted(pvpWager * 1.6), hi = boosted(pvpWager * 2.65);
-      const boostLbl = V.boost ? ` incl. +${Math.round(V.boost * 100)}% vault` : '';
-      _pwh.textContent = `winner takes ${fmt(lo)}–${fmt(hi)} PTS (×opp${boostLbl})`;
+      _pwh.textContent = `winner takes ${fmt(lo)}–${fmt(hi)} PTS (×opp)`;
     } else if (_pwh) {
       _pwh.textContent = 'friendly slap, no wager';
     }
@@ -3446,7 +3392,6 @@
   if (enterRing) enterRing.addEventListener('click', () => { A.unlock(); A.click(); openSolo(); });
   // B1 dock buttons → existing flows
   const dockShop = $('#m1-dock-shop'); if (dockShop) dockShop.onclick = () => { A.click(); $('#btn-shop').click(); };
-  const dockStake = $('#m1-dock-stake'); if (dockStake) dockStake.onclick = () => { A.click(); $('#btn-vault').click(); };
   const dockWallet = $('#m1-dock-wallet'); if (dockWallet) dockWallet.onclick = () => { A.click(); $('#btn-connect').click(); };
   const dockSettings = $('#m1-dock-settings'); if (dockSettings) dockSettings.onclick = () => { A.click(); $('#btn-settings').click(); };
   const topSettings = $('#m1-top-settings'); if (topSettings) topSettings.onclick = () => { A.click(); $('#btn-settings').click(); };
@@ -6046,7 +5991,7 @@
     if (!S.profile) setTimeout(() => { if (!S.profile && screen === 'menu') openFighter(false); }, 500);
     // debug hook for console testing / automated smoke tests
     window.SAK_DEBUG = {
-      state: S, get fight() { return F; }, roster, openVault, openShop, openSubmit, openPvp, openLeaderboard,
+      state: S, get fight() { return F; }, roster, openShop, openSubmit, openPvp, openLeaderboard,
       startFight: (id, bet, mode) => startFight(roster().find(k => k.id === id) || roster()[0], bet, { mode }),
       lockAt: angle => lockLocal(true, angle),   // smoke tests: lock local meter at an exact angle
       lockOpp: angle => lockOpponentPrivate(angle), // smoke tests: force private opponent lock

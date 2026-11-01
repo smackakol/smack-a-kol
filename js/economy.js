@@ -1,9 +1,8 @@
 /* =========================================================================
- * Economy: PTS (the single in-game currency) + Stake Vault (PTS staking).
+ * Economy: PTS (the single in-game currency).
  * -------------------------------------------------------------------------
- * PTS live only in localStorage. The Vault moves PTS between the spendable
- * balance and a "staked" bucket that accrues APR yield and grants a reward
- * boost tier. Later this is where an SPL token / staking program plugs in.
+ * PTS live only in localStorage. (The Stake Vault was retired 2026-11-01
+ * by LT: staked PTS + yield were returned to spendable balances on load.)
  * ========================================================================= */
 window.SAK = window.SAK || {};
 
@@ -30,72 +29,14 @@ SAK.Points = (function () {
   };
 })();
 
-SAK.Vault = (function () {
+// Player tier by lifetime PTS (menu badge). Kept: lifetime progression
+// display, not staking — the vault that used its yieldBoost is gone.
+SAK.playerTier = (function () {
   const S = () => SAK.Storage.state;
-  const C = () => SAK.STAKING;
-  const listeners = [];
-  const emit = () => listeners.forEach(fn => fn());
-  const YEAR = 365 * 86400;
-
-  /** Player tier by lifetime PTS (drives the staking yield boost). */
-  function playerTier() {
+  return function playerTier() {
     const lp = (S().stats && S().stats.lifetimePts) || 0;
     let cur = SAK.TIERS[0];
     for (const t of SAK.TIERS) if (lp >= t.min) cur = t;
     return cur;
-  }
-  // Expose for the menu tier badge.
-  SAK.playerTier = playerTier;
-
-  /** Yield earned since the last settle (not yet added to `accrued`). */
-  function unsettled() {
-    const st = S().staking;
-    if (!st.amount || !st.since) return 0;
-    const sec = (Date.now() - st.since) / 1000 * C().demoTimeScale;
-    const yb = playerTier().yieldBoost || 0;
-    return st.amount * C().apr * (1 + yb) * sec / YEAR;
-  }
-  /** Fold unsettled yield into `accrued` (call before changing the amount). */
-  function settle() {
-    const st = S().staking;
-    st.accrued += unsettled();
-    st.since = st.amount ? Date.now() : null;
-  }
-  function tierFor(amount) {
-    const t = C().tiers; let cur = t[0];
-    for (const x of t) if (amount >= x.min) cur = x;
-    return cur;
-  }
-
-  return {
-    get staked() { return S().staking.amount; },
-    get pending() { return S().staking.accrued + unsettled(); },
-    get tier() { return tierFor(S().staking.amount); },
-    get boost() { return tierFor(S().staking.amount).boost; },
-    nextTier() { return C().tiers.find(t => t.min > S().staking.amount) || null; },
-    tierFor,
-    stake(n) {
-      n = Math.floor(n);
-      if (n <= 0 || !SAK.Points.spend(n)) return false;
-      settle(); S().staking.amount += n; S().staking.since = Date.now();
-      SAK.Storage.save(); emit(); return true;
-    },
-    unstake(n) {
-      n = Math.min(Math.floor(n), S().staking.amount);
-      if (n <= 0) return false;
-      settle(); S().staking.amount -= n;
-      if (!S().staking.amount) S().staking.since = null;
-      SAK.Points.add(n, false);
-      SAK.Storage.save(); emit(); return true;
-    },
-    claim() {
-      settle();
-      const amt = Math.floor(S().staking.accrued);
-      if (amt <= 0) return 0;
-      S().staking.accrued -= amt;
-      SAK.Points.add(amt, true);
-      SAK.Storage.save(); emit(); return amt;
-    },
-    onChange(fn) { listeners.push(fn); }
   };
 })();
