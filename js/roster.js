@@ -130,6 +130,13 @@ SAK.KOLS = [
     look: { skin: '#a8adb3', shirt: '#9aa0a8', hair: '#8a8f96', pants: '#2a2a30', accessory: 'none', accent: '#e8c547', body: 'chonk', hairStyle: 'bald', eyes: 'angry', eyeColor: '#1a1a1a', species: 'bear', outfit: 'tee', parody: 'senseisol', cardBg: '#1a1a22' },
     taunts: ['Go SOL, or go home.', 'Class is in session. Hands up.', 'You just got schooled.']
   },
+  {
+    id: 'travfadd', name: 'TravFadd', handle: '@TravFaddSlaps', level: 9,
+    tagline: 'Hood up. Horns out. Street certified.',
+    difficulty: 4, hp: 230, power: 25, accuracy: 0.81, winPts: 925, minBet: 625, payout: 3.05,
+    look: { skin: '#f5f5f5', shirt: '#111118', hair: '#111118', pants: '#1a1a1a', accessory: 'none', accent: '#39ff14', body: 'gymbro', hairStyle: 'bald', eyes: 'angry', eyeColor: '#1a1a1a', species: 'bull', outfit: 'tee', parody: 'travfadd', gloves: 'mma', cardBg: '#39ff14' },
+    taunts: ['Hood up. Horns out. You already lost.', 'StreetHood runs this ring.', 'You just got bonked by the block. 👊']
+  },
   { // MAX KOL 1 (LT 2026-10-28): hidden from the picker + rail until the MAX KOL tier + lock land — find via SAK.KOLS.
     id: 'supertrump', name: 'SUPER TRUMP', handle: '@SuperTrumpSlaps', level: 11, maxKol: true,
     tagline: 'Huge slaps. The best slaps.',
@@ -143,6 +150,13 @@ SAK.KOLS = [
     difficulty: 5, hp: 300, power: 30, accuracy: 0.92, winPts: 1500, minBet: 1500, payout: 2.5,
     look: { skin: '#f0c8a8', shirt: '#e8e8f0', hair: '#6b4a2f', pants: '#d8d8e0', accessory: 'none', accent: '#ff6a00', body: 'classic', hairStyle: 'bald', eyes: 'round', eyeColor: '#1a1a1a', species: 'human', outfit: 'tee', parody: 'elonmars', cardBg: '#0c1532', elonGlove: true },
     taunts: ['To Mars!', 'One small slap for man.', 'You just got launched.']
+  },
+  { // MAX KOL 3 (LT 2026-11-01).
+    id: 'czb', name: 'CZ-B', handle: '@CZBSlaps', level: 11, maxKol: true,
+    tagline: 'Centralized hands. Decentralized slaps.',
+    difficulty: 5, hp: 310, power: 31, accuracy: 0.91, winPts: 1500, minBet: 1500, payout: 2.5,
+    look: { skin: '#f0c8a8', shirt: '#16161c', hair: '#1a1a1a', pants: '#1a1a22', accessory: 'none', accent: '#ffd23f', body: 'classic', hairStyle: 'buzz', eyes: 'round', eyeColor: '#3a3a3a', species: 'human', outfit: 'tee', parody: 'czb', gloves: 'czb', cardBg: '#f0b90b' },
+    taunts: ['Centralized hands. Decentralized slaps.', 'You just got listed... and delisted.', 'The exchange always wins. Especially this one.']
   },
   {
     id: 'frankienogood', name: 'Frankie NoGood', handle: '@FrankieNoGood', level: 9,

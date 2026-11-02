@@ -71,7 +71,7 @@
   }
   // MAX KOL (LT 2026-10-28): hidden from the picker until the tier + lock land — find them via SAK.KOLS.
   const roster = () => SAK.KOLS.filter(k => !k.maxKol).concat(S.customKols.map(hydrateCustom));
-  const MAX_RESERVED_NAMES = ['super trump', 'elon mars'];   // MAX KOL names are reserved, never usable for custom fighters
+  const MAX_RESERVED_NAMES = ['super trump', 'elon mars', 'cz-b'];   // MAX KOL names are reserved, never usable for custom fighters
   const nameIsReserved = n => MAX_RESERVED_NAMES.includes((n || '').toLowerCase());
   const ugcSlotsUnlocked = () => SAK.UGC.slotMilestones.filter(m => S.stats.lifetimePts >= m).length;
   const ugcNextMilestone = () => SAK.UGC.slotMilestones.find(m => S.stats.lifetimePts < m);
@@ -4005,8 +4005,8 @@
    * their difficulty/accuracy data). FREE mode: no SOL, PTS only.
    * WAGER mode: SOL bet vs the house at a flat 1.9x. The classic
    * picker (same 8 + fan KOLs) stays reachable from FREE mode. */
-  const SOLO_KOL_IDS = ['choosepoornick', 'solflakey', 'minhfantasy', 'growlingkitty', 'cupsalty', 'kooked', 'fabiony', 'mertz', 'tolly', 'mikesailor', 'poorgoat', 'chairboy', 'unibonker', 'pattyspice', 'senseisol', 'frankienogood', 'ansombull', 'alone'];
-  const MAX_KOL_IDS = ['supertrump', 'elonmars'];
+  const SOLO_KOL_IDS = ['choosepoornick', 'solflakey', 'minhfantasy', 'growlingkitty', 'cupsalty', 'kooked', 'fabiony', 'mertz', 'tolly', 'mikesailor', 'poorgoat', 'chairboy', 'unibonker', 'pattyspice', 'senseisol', 'travfadd', 'frankienogood', 'ansombull', 'alone'];
+  const MAX_KOL_IDS = ['supertrump', 'elonmars', 'czb'];
   const soloKols = () => SOLO_KOL_IDS.concat(MAX_KOL_IDS).map(id => SAK.KOLS.find(k => k.id === id)).filter(Boolean);
   function soloTier(k) {
     if (k && k.maxKol) return { key: 'max', name: 'MAX', mult: 2.5 };

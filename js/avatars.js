@@ -172,6 +172,24 @@ SAK.avatarSVG = function (look, opts) {
   const poorgoatFx = look.parody === 'poorgoat'
     ? `<g><ellipse cx="14" cy="44" rx="9" ry="15" fill="${s}" stroke="#0003" stroke-width="2" transform="rotate(24 14 44)"/><ellipse cx="86" cy="44" rx="9" ry="15" fill="${s}" stroke="#0003" stroke-width="2" transform="rotate(-24 86 44)"/><path d="M22 36 Q50 2 78 36 Z" fill="#e03131" stroke="#0003" stroke-width="2"/><ellipse cx="50" cy="35" rx="30" ry="6" fill="#b81e28"/><ellipse cx="50" cy="33" rx="30" ry="2.5" fill="#ff6b6b" opacity="0.6"/><ellipse cx="40" cy="64" rx="12" ry="5" fill="#0a0a0a" stroke="#44444a" stroke-width="1" transform="rotate(-14 40 64)"/><ellipse cx="60" cy="64" rx="12" ry="5" fill="#0a0a0a" stroke="#44444a" stroke-width="1" transform="rotate(14 60 64)"/><path d="M28 62 Q26 56 30 55 M72 62 Q74 56 70 55" stroke="#0a0a0a" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>`
     : '';
+  // TravFadd (LT 2026-11-01): black hood UP over the head — a band
+  // framing the face, low on the forehead, with the base bull horns
+  // poking out above it (the band covers the horn middles, like the
+  // Poor Goat cap). Drawn after speciesFx so it covers horn bases.
+  // LT 2026-11-01: side tails extended down to y 70 so the hood
+  // drapes to the sweater (3D drape covers the back of the head).
+  const travfaddFx = look.parody === 'travfadd'
+    ? `<g><path d="M16 70 Q8 10 50 6 Q92 10 84 70 L74 70 Q72 34 50 32 Q28 34 26 70 Z" fill="#16161c" stroke="#0003" stroke-width="2"/></g>`
+    : '';
+  // CZ-B (LT 2026-11-01): yellow headband in Binance gold across
+  // the forehead (drawn first, following the head circle's curve),
+  // the buzz cut's unique hairline V point over it (tip pokes below
+  // the band, like the 3D V pushed proud of the band), then thin
+  // reading-glasses frames over the eyes with temple lines to the
+  // head edges. Drawn after hairFront so everything sits on top.
+  const czbFx = look.parody === 'czb'
+    ? `<g><path d="M24 34 Q50 10 76 34 L76 42 Q50 20 24 42 Z" fill="#f0b90b" stroke="#0003" stroke-width="1.5"/><path d="M42 24 L58 24 L50 36 Z" fill="#1a1a1a"/><g stroke="#1a1a1a" stroke-width="2" fill="none"><rect x="28" y="43" width="20" height="13" rx="4"/><rect x="52" y="43" width="20" height="13" rx="4"/><line x1="48" y1="49" x2="52" y2="49"/><line x1="28" y1="49" x2="18" y2="46"/><line x1="72" y1="49" x2="82" y2="46"/></g></g>`
+    : '';
 
   // Mertz (LT 2026-10-28): bald Zcash maxi — full dark beard + connected
   // mustache. The 2D base draws no beard (only mustache), so the beard
@@ -329,6 +347,8 @@ SAK.avatarSVG = function (look, opts) {
     ${senseiFx}
     ${supertrumpFx}
     ${elonmarsFx}
+    ${travfaddFx}
+    ${czbFx}
     ${opts.blush ? '<ellipse cx="68" cy="62" rx="9" ry="6" fill="#ff2d2d" opacity="0.55"/>' : ''}
     ${dmgFx}
     ${tieFx}
@@ -367,6 +387,21 @@ SAK.avatarBodySVG = function (look) {
   // glowing yellow C chest logo on the charcoal hoodie.
   const poorgoatShirt = look.parody === 'poorgoat'
     ? `<g><path d="M62 96 A13 13 0 1 0 62 118" fill="none" stroke="#ffd23f" stroke-width="6" stroke-linecap="round" opacity="0.35"/><path d="M62 96 A13 13 0 1 0 62 118" fill="none" stroke="#ffd23f" stroke-width="4" stroke-linecap="round"/><line x1="44" y1="88" x2="44" y2="99" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/><line x1="56" y1="88" x2="56" y2="99" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/><circle cx="44" cy="100" r="2" fill="#111111"/><circle cx="56" cy="100" r="2" fill="#111111"/><rect x="38" y="118" width="24" height="9" rx="3" fill="#1a1a1e" stroke="#0003" stroke-width="1.5"/></g>`
+    : '';
+  // TravFadd (LT 2026-11-01): neon green drawstrings + kangaroo
+  // pocket + glowing StreetHood Media chest print on the black hoodie.
+  // LT 2026-11-01: hood drape peeking at the shoulders behind the
+  // neck (drawn first, head group covers its top) + green glow aura
+  // on the slapping hand (viewer's-right fist, Super Trump pattern).
+  const travfaddShirt = look.parody === 'travfadd'
+    ? `<g><path d="M40 78 Q50 72 60 78 L60 90 L40 90 Z" fill="#16161c"/><g transform="rotate(-3 50 108)"><text x="50" y="104" text-anchor="middle" font-size="10" font-weight="bold" fill="#39ff14" font-family="Arial, sans-serif" textLength="46" lengthAdjust="spacingAndGlyphs">StreetHood</text><text x="50" y="115" text-anchor="middle" font-size="9" font-weight="bold" fill="#39ff14" font-family="Arial, sans-serif">Media</text></g><line x1="44" y1="88" x2="44" y2="100" stroke="#39ff14" stroke-width="2.5" stroke-linecap="round"/><line x1="56" y1="88" x2="56" y2="100" stroke="#39ff14" stroke-width="2.5" stroke-linecap="round"/><circle cx="44" cy="101" r="2" fill="#39ff14"/><circle cx="56" cy="101" r="2" fill="#39ff14"/><rect x="38" y="118" width="24" height="9" rx="3" fill="#1a1a1e" stroke="#0003" stroke-width="1.5"/><g transform="rotate(-8 70 92)"><circle cx="70.5" cy="134" r="12" fill="#39ff14" opacity="0.25"/><circle cx="70.5" cy="134" r="9" fill="none" stroke="#39ff14" stroke-width="2" opacity="0.9"/></g></g>`
+    : '';
+  // CZ-B (LT 2026-11-01): Binance diamond chest emblem in Binance
+  // gold (center + N/S/E/W small diamonds, from LT's reference) +
+  // kangaroo pocket on the black hoodie + yellow belt in Binance
+  // gold over the waistband with a darker gold buckle.
+  const czbShirt = look.parody === 'czb'
+    ? `<g><rect x="46" y="100" width="8" height="8" fill="#f0b90b" transform="rotate(45 50 104)"/><rect x="48" y="94" width="4" height="4" fill="#f0b90b" transform="rotate(45 50 96)"/><rect x="48" y="110" width="4" height="4" fill="#f0b90b" transform="rotate(45 50 112)"/><rect x="40" y="103" width="4" height="4" fill="#f0b90b" transform="rotate(45 42 105)"/><rect x="56" y="103" width="4" height="4" fill="#f0b90b" transform="rotate(45 58 105)"/><rect x="38" y="118" width="24" height="9" rx="3" fill="#1a1a1e" stroke="#0003" stroke-width="1.5"/><rect x="${tx0}" y="127" width="${tw}" height="8" fill="#f0b90b" stroke="#0003" stroke-width="1"/><rect x="47" y="126" width="6" height="10" rx="1.5" fill="#c78f06" stroke="#0003" stroke-width="1"/></g>`
     : '';
   // Minh Fantasy (LT 2026-10-28): brown blazer lapels + dark open
   // front + gold chain, and the katana diagonal across the back —
@@ -422,6 +457,16 @@ SAK.avatarBodySVG = function (look) {
   const swordBack = look.accessory === 'sword'
     ? `<g><line x1="24" y1="132" x2="76" y2="64" stroke="#8a919c" stroke-width="6" stroke-linecap="round"/><line x1="24" y1="132" x2="76" y2="64" stroke="#d8dce2" stroke-width="2" stroke-linecap="round"/><g transform="rotate(-53 76 64)"><rect x="74" y="61" width="9" height="6" fill="#ffd23f"/><rect x="81" y="61" width="8" height="6" rx="2" fill="#1a1a22"/></g></g>`
     : '';
+  // TravFadd (LT 2026-11-01): yellow sword on the back — same diagonal
+  // as the trait sword, drawn BEFORE the torso so only the shoulder
+  // hilt + hip tip peek out.
+  // (TravFadd sword REMOVED 2026-11-01 — LT: the sword goes on CZ-B.)
+  // CZ-B (LT 2026-11-01): yellow sword on the back — moved here from
+  // TravFadd. Gold blade (Binance gold + light highlight) on the
+  // same diagonal, drawn BEFORE the torso.
+  const czbSword = look.parody === 'czb'
+    ? `<g><line x1="24" y1="132" x2="76" y2="64" stroke="#f0b90b" stroke-width="6" stroke-linecap="round"/><line x1="24" y1="132" x2="76" y2="64" stroke="#ffe27a" stroke-width="2" stroke-linecap="round"/><g transform="rotate(-53 76 64)"><rect x="74" y="61" width="9" height="6" fill="#f0b90b"/><rect x="81" y="61" width="8" height="6" rx="2" fill="#1a1a22"/></g></g>`
+    : '';
   const chainArc = look.accessory === 'goldchain'
     ? `<path d="M34 92 Q50 106 66 92" fill="none" stroke="#ffd23f" stroke-width="3.5" stroke-linecap="round"/><circle cx="44" cy="99" r="2.2" fill="#ffe27a"/><circle cx="50" cy="101" r="2.2" fill="#ffe27a"/><circle cx="56" cy="99" r="2.2" fill="#ffe27a"/>`
     : look.accessory === 'silverchain'
@@ -449,6 +494,7 @@ SAK.avatarBodySVG = function (look) {
     <rect x="44" y="76" width="12" height="12" fill="${s}"/>
     ${minhSword}
     ${swordBack}
+    ${czbSword}
     <rect x="${tx0}" y="86" width="${tw}" height="44" rx="10" fill="${shirt}" stroke="#0003" stroke-width="2"/>
     <rect x="${tx0}" y="128" width="${tw}" height="7" fill="#1a1a22"/>
     ${printImg}
@@ -461,6 +507,8 @@ SAK.avatarBodySVG = function (look) {
     ${senseiShirt}
     ${supertrumpShirt}
     ${elonmarsShirt}
+    ${travfaddShirt}
+    ${czbShirt}
     ${chainArc}
     ${backpackSvg}
     <g>${head}</g>

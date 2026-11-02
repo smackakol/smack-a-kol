@@ -845,6 +845,7 @@ SAK.Scene3D = (function () {
       this.buildGloves();
       this.buildFlameHand(); // Super Trump: permanent flame hand (post-arms — buildParody runs before arms exist)
       this.buildElonGlove(); // Elon Mars: white-black glove + blue glow (same reason)
+      this.buildTravfaddAura(); // TravFadd: green slapping-hand aura (post-arms — same reason)
       this.buildGear(); // Trait split: general accessories (post-arms — the watch needs a wrist)
       this.root.traverse(o => { o.userData.fighter = this; });
       // V6: establish the fierce default expression (grin + teeth) right away
@@ -907,6 +908,22 @@ SAK.Scene3D = (function () {
             goldGeo.rotateZ(Math.PI / 2);
             add(goldGeo, goldMat, 0, -0.03, 0);
             const g = gm('#ffd23f'); g.metalness = 0.7; g.roughness = 0.3;
+            break;
+          }
+          case 'czb': {
+            // CZ-B (LT 2026-11-01): gold + black MMA gloves with a
+            // flaming glow — gold knuckle pad, black wrist strap,
+            // additive glow sprites on the hand (emissive + sprites,
+            // never a new dynamic light).
+            const goldMat = new T.MeshStandardMaterial({ color: '#ffd23f', metalness: 0.85, roughness: 0.25 });
+            const padGeo = new T.CapsuleGeometry(0.05, 0.16, 6, 16);
+            padGeo.rotateZ(Math.PI / 2);
+            add(padGeo, goldMat, 0, -0.04, 0); // gold knuckle pad
+            add(new T.CylinderGeometry(0.07, 0.075, 0.14, 16), gm('#1a1a22'), 0, 0.05, 0); // black wrist strap
+            const glow = new T.Sprite(new T.SpriteMaterial({ map: getGlowTex(), color: '#ffaa00', transparent: true, blending: T.AdditiveBlending, depthWrite: false, opacity: 0.85 }));
+            glow.scale.setScalar(0.45);
+            glow.userData.glove = true;
+            hand.add(glow);
             break;
           }
           case 'spike': {
@@ -1587,6 +1604,8 @@ SAK.Scene3D = (function () {
       else if (P === 'senseisol') this.buildSensei(add, tadd);
       else if (P === 'supertrump') this.buildSupertrump(add, tadd);
       else if (P === 'elonmars') this.buildElonmars(add, tadd);
+      else if (P === 'travfadd') this.buildTravfadd(add, tadd);
+      else if (P === 'czb') this.buildCzb(add, tadd);
     }
 
     /** Poor Goat (LT 2026-10-28): black goat — plain red baseball cap
@@ -1644,6 +1663,135 @@ SAK.Scene3D = (function () {
       const chestZ = (0.5 * B.w * Math.min(1.25, B.taper) + 0.035) * 0.68 * B.d + 0.012;
       const plate = tadd(new T.PlaneGeometry(0.55, 0.55), new T.MeshBasicMaterial({ map: tex, transparent: true }), 0, 0.50, chestZ + 0.03);
       plate.castShadow = false;
+    }
+
+    /** TravFadd (LT 2026-11-01): all-white bull — black hoodie with the
+     * hood UP over the head (front-open shell, so the face stays
+     * visible and the swept horns poke out through the sides), neon
+     * green drawstrings, kangaroo pocket, and a glowing neon green
+     * "StreetHood Media" graffiti chest print (canvas texture, Alone
+     * pattern — unlit, never a new dynamic light). MMA gloves come
+     * from look.gloves, not the overlay. The speciesBull horn bridge
+     * tuft sits under the hood (black on black) and reads as the hood
+     * draping over hair. three.js phi: +z (face) sits at phi = PI/2,
+     * so the shell runs from just past the face on one side all the
+     * way around the back to just past the face on the other side. */
+    buildTravfadd(add, tadd) {
+      const hoodMat = mat('#16161c');
+      const neon = mat('#39ff14');
+      // Hood UP — sphere shell with a front wedge open for the face.
+      const GAP = 1.12; // ~64 deg face opening
+      const hood = add(new T.SphereGeometry(0.64, 24, 16, Math.PI / 2 + GAP / 2, Math.PI * 2 - GAP, 0, Math.PI * 0.57), hoodMat, 0, 0.52, -0.02);
+      outline(hood, 1.03);
+      // Hood drape (LT 2026-11-01): extend the hood down the BACK of
+      // the head to the sweater — a second shell segment continuing
+      // the main shell's rim (theta 0.57π) down to neck level, back
+      // only (±63° around -z) so the face stays open.
+      const drape = add(new T.SphereGeometry(0.64, 24, 8, Math.PI * 3 / 2 - 1.1, 2.2, Math.PI * 0.57, Math.PI * 0.25), hoodMat, 0, 0.52, -0.02);
+      outline(drape, 1.03);
+      // Hoodie torso pieces — kangaroo pocket + neon drawstrings.
+      const pocket = tadd(new T.BoxGeometry(0.30, 0.18, 0.06), hoodMat, 0, 0.25, 0.32);
+      outline(pocket, 1.1);
+      for (const sx of [-0.08, 0.08])
+        tadd(new T.CylinderGeometry(0.012, 0.012, 0.18, 5), neon, sx, 0.68, 0.33);
+      // Graffiti chest print — wide canvas (cnv is square, too narrow
+      // for the 10-letter word), unlit so it reads as glow.
+      const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+      const x = c.getContext('2d');
+      x.save();
+      x.translate(256, 128); x.rotate(-0.04);
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.shadowColor = '#39ff14'; x.shadowBlur = 20;
+      x.fillStyle = '#39ff14';
+      x.font = '900 84px "Lilita One", "Arial Black", sans-serif';
+      x.fillText('StreetHood', 0, -52);
+      x.font = '900 72px "Lilita One", "Arial Black", sans-serif';
+      x.fillText('Media', 0, 52);
+      x.restore();
+      const tex = mkTex(c);
+      const B = this.body || { w: 1, h: 1, d: 1, taper: 1 };
+      const chestZ = (0.5 * B.w * Math.min(1.25, B.taper) + 0.035) * 0.68 * B.d + 0.012;
+      const print = tadd(new T.PlaneGeometry(0.58, 0.29), new T.MeshBasicMaterial({ map: tex, transparent: true }), 0, 0.48, chestZ + 0.03);
+      print.castShadow = false;
+    }
+
+    /** CZ-B (LT 2026-11-01): MAX KOL 3 — buzz cut with a pointed
+     * center hairline (the V wedge on the forehead), black hoodie
+     * with the hood resting on the back (Chairboy pattern), Binance
+     * diamond chest emblem in Binance gold (canvas plate, from LT's
+     * reference image), gold + black MMA gloves with a flaming glow
+     * (the 'czb' glove case in buildGloves, not the overlay), plus
+     * LT's 2026-11-01 corrections: reading glasses, yellow headband
+     * and yellow belt in Binance gold, and the yellow sword on the
+     * back (moved here from TravFadd). */
+    buildCzb(add, tadd) {
+      const hoodMat = mat('#16161c');
+      // Buzz hairline — downward V point at the forehead center, proud
+      // of the skull so it reads over the buzz cap. Pushed forward to
+      // z 0.52 (LT 2026-11-01) so it stays proud of the headband
+      // below — the band's front surface reaches z 0.52 at its lower
+      // edge, and the V's front reaches 0.565.
+      const v = add(new T.ConeGeometry(0.09, 0.18, 4), mat('#1a1a1a'), 0, 0.80, 0.52, m => { m.rotation.x = Math.PI; });
+      v.scale.z = 0.5;
+      // Hoodie — hood resting on the back + kangaroo pocket.
+      const hood = tadd(new T.SphereGeometry(0.24, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), hoodMat, 0, 0.78, -0.3);
+      hood.rotation.x = 0.5;
+      const pocket = tadd(new T.BoxGeometry(0.30, 0.18, 0.06), hoodMat, 0, 0.25, 0.32);
+      outline(pocket, 1.1);
+      // Binance diamond emblem (LT 2026-11-01: replace the old logo
+      // with the Binance icon from his reference) — center diamond +
+      // four small diamonds at N/S/E/W, Binance gold, unlit plate.
+      const [c, x] = cnv('rgba(0,0,0,0)');
+      x.save();
+      x.translate(128, 128);
+      x.fillStyle = '#f0b90b';
+      x.shadowColor = '#f0b90b'; x.shadowBlur = 14;
+      const dia = (cx, cy, r) => { x.beginPath(); x.moveTo(cx, cy - r); x.lineTo(cx + r, cy); x.lineTo(cx, cy + r); x.lineTo(cx - r, cy); x.closePath(); x.fill(); };
+      dia(0, 0, 30);
+      dia(0, -52, 20);
+      dia(0, 52, 20);
+      dia(-52, 0, 20);
+      dia(52, 0, 20);
+      x.restore();
+      const tex = mkTex(c);
+      const B = this.body || { w: 1, h: 1, d: 1, taper: 1 };
+      const chestZ = (0.5 * B.w * Math.min(1.25, B.taper) + 0.035) * 0.68 * B.d + 0.012;
+      const plate = tadd(new T.PlaneGeometry(0.42, 0.42), new T.MeshBasicMaterial({ map: tex, transparent: true }), 0, 0.50, chestZ + 0.03);
+      plate.castShadow = false;
+      // Yellow sword on the back (LT 2026-11-01: moved here from
+      // TravFadd) — diagonal blade at the back plane, hilt above
+      // the shoulder. Classic body is narrower than gymbro, so the
+      // -0.50 plane stays proud of the back.
+      const bladeMat = mat('#ffd23f', { emissive: '#7a5b00', emissiveIntensity: 0.4 });
+      const darkMat = mat('#1a1a22');
+      tadd(new T.BoxGeometry(0.07, 1.35, 0.03), bladeMat, 0, 0.55, -0.50, m => { m.rotation.z = -0.85; });
+      tadd(new T.ConeGeometry(0.05, 0.14, 4), bladeMat, -0.55, 0.08, -0.50, m => { m.rotation.z = 2.29; });
+      tadd(new T.BoxGeometry(0.16, 0.05, 0.05), darkMat, 0.51, 0.99, -0.50, m => { m.rotation.z = -0.85; });
+      tadd(new T.CylinderGeometry(0.03, 0.03, 0.14, 8), darkMat, 0.585, 1.06, -0.50, m => { m.rotation.z = -0.85; });
+      tadd(new T.SphereGeometry(0.045, 8, 8), bladeMat, 0.63, 1.11, -0.50);
+      // Reading glasses (LT 2026-11-01) — thin dark frames, NO lens
+      // fill so the eyes stay visible; each arm angles back from its
+      // lens corner to the skull surface at the ear (rotation.y
+      // -sx*0.45 puts the front end inner, the back end outer).
+      const frameMat = mat('#1a1a1a');
+      for (const sx of [-1, 1]) {
+        add(new T.BoxGeometry(0.21, 0.02, 0.02), frameMat, sx * 0.18, 0.575, 0.50);
+        add(new T.BoxGeometry(0.21, 0.02, 0.02), frameMat, sx * 0.18, 0.425, 0.50);
+        add(new T.BoxGeometry(0.02, 0.15, 0.02), frameMat, sx * 0.18 - 0.105, 0.50, 0.50);
+        add(new T.BoxGeometry(0.02, 0.15, 0.02), frameMat, sx * 0.18 + 0.105, 0.50, 0.50);
+        add(new T.BoxGeometry(0.02, 0.02, 0.50), frameMat, sx * 0.40, 0.52, 0.28, m => { m.rotation.y = -sx * 0.45; });
+      }
+      add(new T.BoxGeometry(0.15, 0.02, 0.02), frameMat, 0, 0.52, 0.50);
+      // Yellow headband (LT 2026-11-01) — Binance gold shell band
+      // across the forehead, over the buzz; DoubleSide so the
+      // underside reads from low angles.
+      const band = add(new T.SphereGeometry(0.56, 24, 8, 0, Math.PI * 2, Math.PI * 0.22, Math.PI * 0.16), mat('#f0b90b', { side: T.DoubleSide }), 0, 0.42, 0);
+      outline(band, 1.02);
+      // Yellow belt (LT 2026-11-01) — Binance gold waist band +
+      // darker gold buckle, Super Trump pattern.
+      const belt = tadd(new T.CylinderGeometry(0.46, 0.47, 0.10, 20), mat('#f0b90b'), 0, 0.02, 0);
+      belt.scale.z = 0.68 * B.d;
+      tadd(new T.BoxGeometry(0.12, 0.09, 0.03), mat('#c78f06'), 0, 0.02, 0.35);
     }
 
     /** Minh Fantasy (LT 2026-10-28): blind swordsman — silver spiky
@@ -2009,6 +2157,20 @@ SAK.Scene3D = (function () {
         sp.scale.setScalar(scale); sp.position.set(0, -0.08, 0.12); hand.add(sp); return sp;
       };
       mk('#1a5cff', 0.55, 0.85); mk('#4dc3ff', 0.30, 0.95);
+    }
+
+    /** TravFadd (LT 2026-11-01): green glow aura on the slapping
+     * hand — two additive neon sprites parented to the hand group
+     * (flame-hand pattern, but the hand itself is NOT recolored:
+     * he wears MMA gloves, so only the aura glows). */
+    buildTravfaddAura() {
+      if (this.look.parody !== 'travfadd' || !this.arms || !this.arms[this.armSide]) return;
+      const hand = this.arms[this.armSide].hand;
+      const mk = (color, scale, op) => {
+        const sp = new T.Sprite(new T.SpriteMaterial({ map: getGlowTex(), color, transparent: true, blending: T.AdditiveBlending, depthWrite: false, opacity: op }));
+        sp.scale.setScalar(scale); sp.position.set(0, -0.08, 0.12); hand.add(sp); return sp;
+      };
+      mk('#39ff14', 0.55, 0.85); mk('#a8ff7a', 0.30, 0.95);
     }
 
     buildUnibonker(add, tadd) {
@@ -4641,6 +4803,14 @@ SAK.Scene3D = (function () {
     if (kol) kol.dispose();
     kol = new Fighter(SAK.PLAYER.look, +1, +1);      // KOL slaps with left hand (camera side)
     scene.add(kol.root);
+    // TravFadd (LT 2026-11-01): opponents used to render bare-handed no
+    // matter what their look carried — showGloves was only ever set on
+    // the player's fighter. Honor an authored look.gloves on KOL
+    // parody opponents so KOLs with gloves (TravFadd MMA, Frankie MMA,
+    // Patty diamond, Ansom spike) actually wear them in fights. KOLs
+    // without a gloves field stay bare-handed, and the parody gate
+    // keeps a PvP player's shop tier from ever dressing an opponent.
+    if (look && look.parody && look.gloves) kol.showGloves = true;
     // Convert through applyAvatar, exactly like setPlayer: PvP snapshots
     // and profile looks arrive as avatar params ({ hairColor, ... }).
     // Building the Fighter straight from params left look.hair undefined,
