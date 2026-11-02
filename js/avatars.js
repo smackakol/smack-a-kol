@@ -178,8 +178,10 @@ SAK.avatarSVG = function (look, opts) {
   // Poor Goat cap). Drawn after speciesFx so it covers horn bases.
   // LT 2026-11-01: side tails extended down to y 70 so the hood
   // drapes to the sweater (3D drape covers the back of the head).
+  // LT 2026-11-02: tails down to y 88, shoulder length, both sides
+  // (3D side drapes match); the face window's center stays open.
   const travfaddFx = look.parody === 'travfadd'
-    ? `<g><path d="M16 70 Q8 10 50 6 Q92 10 84 70 L74 70 Q72 34 50 32 Q28 34 26 70 Z" fill="#16161c" stroke="#0003" stroke-width="2"/></g>`
+    ? `<g><path d="M16 88 Q8 10 50 6 Q92 10 84 88 L74 88 Q72 34 50 32 Q28 34 26 88 Z" fill="#16161c" stroke="#0003" stroke-width="2"/></g>`
     : '';
   // CZ-B (LT 2026-11-01): yellow headband in Binance gold across
   // the forehead (drawn first, following the head circle's curve),

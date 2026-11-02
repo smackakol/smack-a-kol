@@ -1689,6 +1689,16 @@ SAK.Scene3D = (function () {
       // only (±63° around -z) so the face stays open.
       const drape = add(new T.SphereGeometry(0.64, 24, 8, Math.PI * 3 / 2 - 1.1, 2.2, Math.PI * 0.57, Math.PI * 0.25), hoodMat, 0, 0.52, -0.02);
       outline(drape, 1.03);
+      // Side drapes (LT 2026-11-02): the same drop on BOTH sides of
+      // the head, down to the sweater — shoulder-length hood sides
+      // framing the face. Radius 0.65 (a hair proud of the back
+      // drape) so the overlapping phi ranges never z-fight; the face
+      // gap (±32° around +z) stays open — the side segments start at
+      // 128° and 308°, clear of it.
+      for (const phiC of [Math.PI, 0]) {
+        const side = add(new T.SphereGeometry(0.65, 24, 8, phiC - 0.9, 1.8, Math.PI * 0.57, Math.PI * 0.25), hoodMat, 0, 0.52, -0.02);
+        outline(side, 1.03);
+      }
       // Hoodie torso pieces — kangaroo pocket + neon drawstrings.
       const pocket = tadd(new T.BoxGeometry(0.30, 0.18, 0.06), hoodMat, 0, 0.25, 0.32);
       outline(pocket, 1.1);
