@@ -4006,7 +4006,7 @@
    * WAGER mode: SOL bet vs the house at a flat 1.9x. The classic
    * picker (same 8 + fan KOLs) stays reachable from FREE mode. */
   const SOLO_KOL_IDS = ['choosepoornick', 'solflakey', 'minhfantasy', 'growlingkitty', 'cupsalty', 'kooked', 'fabiony', 'mertz', 'tolly', 'mikesailor', 'poorgoat', 'chairboy', 'unibonker', 'pattyspice', 'senseisol', 'travfadd', 'frankienogood', 'ansombull', 'alone'];
-  const MAX_KOL_IDS = ['supertrump', 'elonmars', 'czb'];
+  const MAX_KOL_IDS = ['elonmars', 'czb', 'supertrump']; // LT 2026-11-02: SUPER TRUMP last, after CZ-B
   const soloKols = () => SOLO_KOL_IDS.concat(MAX_KOL_IDS).map(id => SAK.KOLS.find(k => k.id === id)).filter(Boolean);
   function soloTier(k) {
     if (k && k.maxKol) return { key: 'max', name: 'MAX', mult: 2.5 };
