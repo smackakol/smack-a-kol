@@ -2303,6 +2303,10 @@
     if (F.fireArmed) { F.fireArmed = false; S.powerups.fist = Math.min(SAK.POWERUPS.fist.max, (S.powerups.fist || 0) + 1); if (Scene) Scene.setFireArmed(false); }
     if (win) { st.wins++; st.streak++; st.bestStreak = Math.max(st.bestStreak, st.streak); S.beaten[k.id] = true; checkMaxKolUnlock(); A.win(); }
     else if (!draw) { st.losses++; st.streak = 0; A.lose(); }
+    // Smack King result line (LT 2026-11-03): YOU WIN / YOU LOSE, after
+    // the final KO commentary finishes — never overlapping it, never
+    // after a draw. playResultLine waits internally if a line is playing.
+    if (!draw) A.playResultLine(win);
     // ---- Solo streak rewards (LT 2026-10-25): wagered Solo only ----
     let streakGrant = null;
     if (F.opts && F.opts.soloHouse && !draw) {

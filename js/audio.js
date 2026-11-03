@@ -139,6 +139,7 @@ SAK.Audio = (function () {
     loadMissBank();
     loadYellowBank();
     loadHardBank();
+    loadResultBank();
     loadOpeningBank();
     // A custom slap replaces the entire random bank with the one upload
     loadCustomInto('slap', {}).then(ok => {
@@ -790,6 +791,55 @@ SAK.Audio = (function () {
     src.start(ctx.currentTime + 0.08);
   }
 
+  /* ---- Smack King fight-result lines (LT 2026-11-03) ----
+     SEPARATE bank — one line per decided fight, from the local
+     player's perspective: YOU WIN on a win, YOU LOSE on a loss.
+     Played by endFight via playResultLine(win), NEVER overlapping
+     the final KO commentary: if a Smack King line is still playing
+     (the KO slap's line, or one queued behind it), the result line
+     waits for it to finish, then plays. Draws play nothing. Same
+     conventions: gain 0.8 * soundCfg.commentary, silent on load
+     failure, no synth fallback. ---- */
+  const RESULT_BANK = [
+    { id: 'smackking-you-win', file: 'assets/sfx/smackking-you-win.mp3' }, // You win
+    { id: 'smackking-you-lose', file: 'assets/sfx/smackking-you-lose.mp3' }, // You lose!
+  ];
+  const resultBufs = {};
+  function loadResultBank() {
+    if (!ctx) return;
+    RESULT_BANK.forEach(b => {
+      fetch(b.file).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(ab => ctx.decodeAudioData(ab))
+        .then(buf => { resultBufs[b.id] = buf; })
+        .catch(() => { /* silent — a missing line just never plays */ });
+    });
+  }
+  // Wait for any playing Smack King line (and any line queued behind
+  // it) to finish, then play the result line. Single-threaded, so the
+  // check-and-chain below is atomic: no line can end between them.
+  function playResultLine(win) {
+    if (!ready() || soundCfg.commentary <= 0) return;
+    const id = win ? 'smackking-you-win' : 'smackking-you-lose';
+    const play = () => playResultBuf(id);
+    if (!commentarySrc) { play(); return; }
+    const wait = () => {
+      if (!commentarySrc) { play(); return; }
+      const cur = commentarySrc, prev = cur.onended;
+      cur.onended = () => { if (prev) prev(); wait(); };
+    };
+    wait();
+  }
+  function playResultBuf(id) {
+    const buf = resultBufs[id];
+    if (!buf || !ctx || commentarySrc) return;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g = ctx.createGain(); g.gain.value = 0.8 * soundCfg.commentary;
+    src.connect(g); g.connect(master);
+    commentarySrc = src;
+    src.onended = () => { if (commentarySrc === src) commentarySrc = null; };
+    src.start();
+  }
+
   /* ---- Smack King fight-opening lines (LT 2026-10-27) ----
      SEPARATE bank from the slap COMMENTARY_BANK — one line per fight,
      played at the very start of a fight before the ROUND 1 card, never
@@ -1048,6 +1098,10 @@ SAK.Audio = (function () {
     /** Smack King yellow line — one per player good slap, called from
         slap() only. KOL good slaps fall back to the main bank. */
     playYellowCommentary,
+    /** Smack King result line — one per decided fight, called from
+        endFight only. Waits for the final KO commentary to finish,
+        then plays YOU WIN or YOU LOSE. Draws play nothing. */
+    playResultLine,
     /** Boxing ring bell — three classic dings with metallic partials. */
     bell() {
       if (!ready()) return;
