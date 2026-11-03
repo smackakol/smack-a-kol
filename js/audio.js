@@ -138,6 +138,7 @@ SAK.Audio = (function () {
     loadRedBank();
     loadMissBank();
     loadYellowBank();
+    loadHardBank();
     loadOpeningBank();
     // A custom slap replaces the entire random bank with the one upload
     loadCustomInto('slap', {}).then(ok => {
@@ -567,6 +568,12 @@ SAK.Audio = (function () {
     { id: 'smackking-miss-04', file: 'assets/sfx/smackking-miss-04.mp3' }, // All wind, no slap! (full line + "Somebody check his AIM!" pending re-record)
     { id: 'smackking-miss-05', file: 'assets/sfx/smackking-miss-05.mp3' }, // He missed! Even the TABLE ducked that one!
     { id: 'smackking-miss-06', file: 'assets/sfx/smackking-miss-06.mp3' }, // He paid gas to slap NOTHING!
+    { id: 'smackking-miss-07', file: 'assets/sfx/smackking-miss-07.mp3' }, // He swung at a ghost! The ghost said, no thank you!
+    { id: 'smackking-miss-08', file: 'assets/sfx/smackking-miss-08.mp3' }, // That miss had drama, that miss had spin, that miss had absolutely nothing else.
+    { id: 'smackking-miss-09', file: 'assets/sfx/smackking-miss-09.mp3' }, // He slapped the timeline, the timeline slapped back with silence (clean trimmed)
+    { id: 'smackking-miss-10', file: 'assets/sfx/smackking-miss-10.mp3' }, // Air wins again! Somebody give the air a championship belt! (Whisper heard "championship ship belt", likely a stutter; LT ears final)
+    { id: 'smackking-miss-11', file: 'assets/sfx/smackking-miss-11.mp3' }, // He missed so hard, his own hand filed a complaint (clean trimmed)
+    // NOTE 2026-11-02: miss-12 ("That swing went to the moon! Unfortunately the fighter stayed right here!") was DROPPED — its video failed with invalid_resume_id and was never generated. Bank ends at 11.
   ];
   const missBufs = {};
   let missLoading = false, lastMissIdx = -1, queuedMiss = false;
@@ -643,6 +650,12 @@ SAK.Audio = (function () {
     { id: 'smackking-yellow-02', file: 'assets/sfx/smackking-yellow-02.mp3' }, // Huge paper hand slap!
     { id: 'smackking-yellow-03', file: 'assets/sfx/smackking-yellow-03.mp3' }, // He just got pumped AND dumped by one hand!
     { id: 'smackking-yellow-04', file: 'assets/sfx/smackking-yellow-04.mp3' }, // Solid! His bags just got a little lighter!
+    { id: 'smackking-yellow-05', file: 'assets/sfx/smackking-yellow-05.mp3' }, // Nice hit! He is down bad but still holding his bags! (clean trimmed)
+    { id: 'smackking-yellow-06', file: 'assets/sfx/smackking-yellow-06.mp3' }, // That slap pumped harder than a dev wallet dump!
+    { id: 'smackking-yellow-07', file: 'assets/sfx/smackking-yellow-07.mp3' }, // He felt that one all the way down to his seed phrase stash. (clean trimmed)
+    { id: 'smackking-yellow-08', file: 'assets/sfx/smackking-yellow-08.mp3' }, // Good connection! The crowd is already aping the replay. (clean trimmed)
+    { id: 'smackking-yellow-09', file: 'assets/sfx/smackking-yellow-09.mp3' }, // He just got slapped into a lower market cap.
+    { id: 'smackking-yellow-10', file: 'assets/sfx/smackking-yellow-10.mp3' }, // That was a clean, green candle to the cheek!
   ];
   const yellowBufs = {};
   let yellowLoading = false, lastYellowIdx = -1, queuedYellow = false;
@@ -701,6 +714,82 @@ SAK.Audio = (function () {
     src.start(ctx.currentTime + 0.08);
   }
 
+  /* ---- Smack King hard slap commentary (LT 2026-11-02) ----
+     SEPARATE bank — the main landed slap bank: PERFECT grade slaps
+     only, layered over the slap like the other banks. Both fighters'
+     perfect slaps use it (no player only rule was set for hard, unlike
+     red/yellow/miss); weak player slaps stay red, good player slaps
+     stay yellow, everything else falls back to the main 24 line bank.
+     Same conventions: shared commentarySrc guard, random pick never
+     the same line twice in a row, gain 0.8 * soundCfg.commentary,
+     +0.08s delay, queue behind a playing line instead of dropping,
+     silent on load failure, no synth fallback. ---- */
+  const HARD_COMMENTARY_BANK = [
+    { id: 'smackking-hard-01', file: 'assets/sfx/smackking-hard-01.mp3' }, // That smack hurt more than sizing a bundled token!
+    { id: 'smackking-hard-02', file: 'assets/sfx/smackking-hard-02.mp3' }, // Wow, he sold the bottom and watched it moon! (Whisper heard "MUNE", likely moon; LT ears final)
+    { id: 'smackking-hard-03', file: 'assets/sfx/smackking-hard-03.mp3' }, // He aped the top and got slapped back to the trenches. (clean trimmed)
+    { id: 'smackking-hard-04', file: 'assets/sfx/smackking-hard-04.mp3' }, // That hand just rugged his whole portfolio in one hit!
+    { id: 'smackking-hard-05', file: 'assets/sfx/smackking-hard-05.mp3' }, // He bought the bundle, held the bag, and ate the slap. (clean trimmed)
+    { id: 'smackking-hard-06', file: 'assets/sfx/smackking-hard-06.mp3' }, // Liquidity left, chart left, and now his face left, too!
+  ];
+  const hardBufs = {};
+  let hardLoading = false, lastHardIdx = -1, queuedHard = false;
+  function loadHardBank() {
+    if (!ctx) return;
+    HARD_COMMENTARY_BANK.forEach(b => {
+      fetch(b.file).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(ab => ctx.decodeAudioData(ab))
+        .then(buf => { hardBufs[b.id] = buf; })
+        .catch(() => { /* silent — a missing line just never plays */ });
+    });
+  }
+  // One hard line per perfect slap, random (never the same line twice
+  // in a row), never overlapping another Smack King line (shared
+  // commentarySrc guard). If a line is already playing, the hard line
+  // QUEUES behind it (same as the miss/red/yellow queues) instead of
+  // dropping.
+  function playHardCommentary() {
+    if (!ready() || hardLoading) return;
+    if (commentarySrc) {
+      if (!queuedHard) {
+        queuedHard = true;
+        const cur = commentarySrc, prevEnded = cur.onended;
+        cur.onended = () => { if (prevEnded) prevEnded(); queuedHard = false; if (!commentarySrc) playHardCommentary(); };
+      }
+      return;
+    }
+    let idx = Math.floor(Math.random() * HARD_COMMENTARY_BANK.length);
+    if (HARD_COMMENTARY_BANK.length > 1 && idx === lastHardIdx) idx = (idx + 1) % HARD_COMMENTARY_BANK.length;
+    const entry = HARD_COMMENTARY_BANK[idx];
+    const buf = hardBufs[entry.id];
+    if (!buf) {
+      // Not preloaded yet — fetch on demand, play only if nothing started since.
+      hardLoading = true;
+      fetch(entry.file).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(ab => ctx.decodeAudioData(ab))
+        .then(b => {
+          hardBufs[entry.id] = b;
+          hardLoading = false;
+          if (!commentarySrc) playHardCommentaryBuf(entry.id);
+        })
+        .catch(() => { hardLoading = false; });
+      return;
+    }
+    playHardCommentaryBuf(entry.id);
+  }
+  function playHardCommentaryBuf(id) {
+    const buf = hardBufs[id];
+    if (!buf || !ctx || commentarySrc) return;
+    const idx = HARD_COMMENTARY_BANK.findIndex(b => b.id === id);
+    if (idx >= 0) lastHardIdx = idx;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g = ctx.createGain(); g.gain.value = 0.8 * soundCfg.commentary;
+    src.connect(g); g.connect(master);
+    commentarySrc = src;
+    src.onended = () => { if (commentarySrc === src) commentarySrc = null; };
+    src.start(ctx.currentTime + 0.08);
+  }
+
   /* ---- Smack King fight-opening lines (LT 2026-10-27) ----
      SEPARATE bank from the slap COMMENTARY_BANK — one line per fight,
      played at the very start of a fight before the ROUND 1 card, never
@@ -713,6 +802,14 @@ SAK.Audio = (function () {
     { id: 'smackking-open-04', file: 'assets/sfx/smackking-open-04.mp3' }, // Let's see who really larping!
     { id: 'smackking-open-05', file: 'assets/sfx/smackking-open-05.mp3' }, // Someone is about to get rugged!
     { id: 'smackking-open-06', file: 'assets/sfx/smackking-open-06.mp3' }, // Who is gonna drain the liquidity!
+    { id: 'smackking-open-07', file: 'assets/sfx/smackking-open-07.mp3' }, // The crowd is loud, the hands are loaded, let us slap.
+    { id: 'smackking-open-08', file: 'assets/sfx/smackking-open-08.mp3' }, // No running, no hiding, just hands and hearts. (script said heart singular; heard plural)
+    { id: 'smackking-open-09', file: 'assets/sfx/smackking-open-09.mp3' }, // Step up, wind up, somebody is about to feel this.
+    { id: 'smackking-open-10', file: 'assets/sfx/smackking-open-10.mp3' }, // This is not a debate! This is a slap off!
+    { id: 'smackking-open-11', file: 'assets/sfx/smackking-open-11.mp3' }, // Fresh hands old grudges let the first slap settle it (clean trimmed)
+    { id: 'smackking-open-12', file: 'assets/sfx/smackking-open-12.mp3' }, // The needle is wild. The hands are wilder. Here we go!
+    { id: 'smackking-open-13', file: 'assets/sfx/smackking-open-13.mp3' }, // Lock in. The KOLs are in the ring and the crowd wants payback. (clean trimmed)
+    { id: 'smackking-open-14', file: 'assets/sfx/smackking-open-14.mp3' }, // One ring, two egos, endless regret (clean trimmed)
   ];
   const openingBufs = {};
   let lastOpeningIdx = -1;
@@ -882,6 +979,7 @@ SAK.Audio = (function () {
       // A weak slap from the KOL falls back to the main bank like any other slap.
       if (grade === 'weak' && byPlayer) playRedCommentary();  // player soft slap in the red — Smack King trolls it
       else if (grade === 'good' && byPlayer) playYellowCommentary();  // player good slap in the yellow — Smack King celebrates it
+      else if (grade === 'perfect') playHardCommentary();  // perfect slap, either fighter — Smack King hard bank
       else playCommentary();                      // Smack King line, layered over the slap, never overlapping another line
       if (playSlapBuf(strength)) return;   // real recorded slap
       // synth fallback (bank not loaded yet / fetch failed) — noise only, no tones
