@@ -3144,36 +3144,49 @@
     };
   }
 
-  async function joinFightReady(ch, btn) {
+  // FIGHT DOOR (2026-11-04): lobby FIRST, exactly like the acceptor path.
+  // The old JOIN waited on a chain read plus a snapshot read BEFORE opening
+  // the lobby, so a slow or hung read meant a dead tap — while the acceptor
+  // sailed into the ring with zero preconditions. Now the tap opens the
+  // lobby instantly; the chain check runs in the background and only ever
+  // closes a lobby whose fight is genuinely no longer Accepted (and drops
+  // its card), and the wager backfills the same way. A hung read can no
+  // longer strand the tap, because the tap no longer waits on any read.
+  function joinFightReady(ch, btn) {
     if (!SAK.SolanaEscrow || !W.address) { toast('Connect your wallet first', 2000); return; }
-    if (btn) btn.disabled = true;
-    try {
-      toast('Joining fight…', 2000);
-      // Chain is the authority: only an Accepted challenge is joinable.
-      // Anything else (Resolved, Cancelled, expired) drops the card.
-      const live = await SAK.SolanaEscrow.getChallenge(ch.challenge_addr);
-      if (!live) throw new Error('Challenge not found on-chain');
-      if (live.stateName !== 'Accepted') {
+    toast('Joining fight…', 2000);
+    const role = ch.challenger === W.address ? 'challenger' : 'acceptor';
+    const opponentWallet = role === 'challenger' ? ch.opponent : ch.challenger;
+    const fightOpts = { mode: 'classic', pvp: true, chainChallenge: ch.challenge_addr, chainWagerSol: ch.wager_sol || null, chainRole: role, chainOpponentWallet: opponentWallet };
+    if (!fightOpts.chainWagerSol && SAK.SolanaEscrow) {
+      SAK.SolanaEscrow.getChallenge(ch.challenge_addr).then(ch2 => {
+        if (ch2 && ch2.wagerSol) fightOpts.chainWagerSol = ch2.wagerSol;
+      }).catch(() => {});
+    }
+    // Background chain verification: a stale card (Resolved, Cancelled,
+    // expired) must not park the player in a lobby nobody will join.
+    if (SAK.SolanaEscrow) {
+      SAK.SolanaEscrow.getChallenge(ch.challenge_addr).then(live => {
+        if (!live || live.stateName === 'Accepted') return;
         toast('This fight is ' + live.stateName + ' — no longer joinable', 2600);
         fightReadyChallenges = (fightReadyChallenges || []).filter(x => x.challenge_addr !== ch.challenge_addr);
-        renderFightReady();
-        return;
-      }
-      const role = live.challenger === W.address ? 'challenger' : 'acceptor';
-      const opponentWallet = role === 'challenger' ? live.opponent : live.challenger;
+        try { renderFightReady(); } catch (e) {}
+        if (window._lobbyChallengeAddr === ch.challenge_addr) {
+          if (SAK.PvpSync) SAK.PvpSync.leaveLobby();
+          const o = document.getElementById('pvp-lobby-overlay');
+          if (o) o.classList.add('hidden');
+          window._lobbyChallengeAddr = null;
+        }
+      }).catch(() => {});
+    }
+    const shadowPromise = (async () => {
       let snaps = null;
-      if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) {
-        try { snaps = await SAK.PvpSync.getFighterSnapshots(ch.challenge_addr); } catch (e) {}
-      }
+      try { if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) snaps = await SAK.PvpSync.getFighterSnapshots(ch.challenge_addr); } catch (e) {}
       const opponentLook = role === 'challenger' ? (snaps && snaps.acceptorLook) : (snaps && snaps.challengerLook);
-      // FLUID ACCEPT: lobby now — the profile fetch inside resolvePvpShadow
-      // runs in the background and is awaited only at fight start.
-      startPvpFightWithLobby(resolvePvpShadow(opponentWallet, opponentLook),
-        { mode: 'classic', pvp: true, chainChallenge: ch.challenge_addr, chainWagerSol: live.wagerSol, chainRole: role, chainOpponentWallet: opponentWallet },
-        ch.challenge_addr, W.address, opponentWallet);
-    } catch (e) {
-      toast('Could not join: ' + (e.message || e), 2600);
-      if (btn) btn.disabled = false;
+      return resolvePvpShadow(opponentWallet, opponentLook);
+    })();
+    if (typeof startPvpFightWithLobby === 'function') {
+      startPvpFightWithLobby(shadowPromise, fightOpts, ch.challenge_addr, W.address, opponentWallet);
     }
   }
 
@@ -3307,18 +3320,24 @@
           }
         }
       } catch (e) {}
-      // FLUID ACCEPT: a sent challenge that flips open -> accepted mid-session
-      // auto-enters the lobby — no badge-hunt, no missed window. Only fires
-      // for challenges seen awaiting THIS session, so stale accepted rows from
-      // before login never yank the player anywhere (those stay on the card).
+      // FIGHT DOOR: every Accepted challenge where I am the challenger
+      // auto-enters the lobby, from ANY state — no "seen it open first this
+      // session" requirement (that rule stranded every challenger whose tab
+      // reloaded or whose phone froze the page in the background). The yank
+      // guard is the screen: menu only (the PvP modal sits over menu, so
+      // modal waiters are covered); a player mid-solo/pick/fight/result is
+      // never pulled out, and the card stays there for them.
       try {
-        (awaiting || []).forEach(c => { if (c.challenge_addr) _seenAwaitingAddrs.add(c.challenge_addr); });
-        (accepted || []).forEach(c => {
-          if (c.challenge_addr && _seenAwaitingAddrs.has(c.challenge_addr)) {
-            autoJoinAcceptedChallenge(c.challenge_addr, c.wager_sol, c.opponent, 'challenger');
-          }
-        });
+        if (typeof screen !== 'undefined' && screen === 'menu') {
+          (accepted || []).forEach(c => {
+            if (c.challenge_addr) autoJoinAcceptedChallenge(c.challenge_addr, c.wager_sol, c.opponent, 'challenger');
+          });
+        }
       } catch (e) {}
+      // FIGHT DOOR: the DB row can lie (the acceptor's 'accepted' update is
+      // fire-and-forget) — verify my sent open challenges against the chain
+      // in the background so a failed update can never strand a fight.
+      try { verifyAwaitingAgainstChain(awaiting || []); } catch (e) {}
       // Incoming direct challenge popup — works from any screen.
       // Gated by maybeShowIncoming: chain-verified Open + unexpired only.
       try {
@@ -3332,6 +3351,44 @@
     if (SAK.PvpSync) SAK.PvpSync.stopStatusPolling();
     fightReadyChallenges = [];
     try { renderFightReady(); } catch (e) {}
+  }
+
+  // FIGHT DOOR (2026-11-04): chain-verify my sent open challenges. The
+  // status poll trusts the Supabase row, but the row's 'accepted' update is
+  // fire-and-forget from the acceptor's phone — one failed PATCH and the
+  // row says open forever while the chain says Accepted, leaving the
+  // challenger with an "awaiting" row and no trigger at all. This sweep
+  // heals that: chain-Accepted rows get their DB status fixed AND enter
+  // the lobby via the same auto-join path; terminal rows get synced so
+  // they stop matching the poll. Background only, never gates entry, and
+  // guarded against overlapping sweeps. A failed read just skips that row
+  // until the next poll — it never stops the sweep or the watch.
+  let _awaitingVerifyBusy = false;
+  async function verifyAwaitingAgainstChain(awaiting) {
+    if (_awaitingVerifyBusy || !SAK.SolanaEscrow || !W.address) return;
+    _awaitingVerifyBusy = true;
+    try {
+      for (const c of (awaiting || [])) {
+        if (!c.challenge_addr) continue;
+        let live = null;
+        try { live = await SAK.SolanaEscrow.getChallenge(c.challenge_addr); } catch (e) { continue; }
+        if (!live) continue;
+        if (live.stateName === 'Accepted') {
+          if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(c.challenge_addr, 'accepted');
+          if (typeof screen !== 'undefined' && screen === 'menu') {
+            autoJoinAcceptedChallenge(c.challenge_addr, c.wager_sol, c.opponent, 'challenger');
+          }
+          if (!(fightReadyChallenges || []).some(x => x.challenge_addr === c.challenge_addr)) {
+            fightReadyChallenges = [...(fightReadyChallenges || []), Object.assign({}, c, { status: 'accepted' })];
+            try { renderFightReady(); } catch (e) {}
+          }
+        } else if (live.stateName === 'Cancelled' || live.stateName === 'Resolved') {
+          if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(c.challenge_addr, live.stateName === 'Resolved' ? 'completed' : 'cancelled');
+        }
+      }
+    } finally {
+      _awaitingVerifyBusy = false;
+    }
   }
 
   async function openPvp() {
@@ -3729,7 +3786,11 @@
       if (!SAK.SolanaEscrow) return;
       let ch = null;
       try { ch = await SAK.SolanaEscrow.getChallenge(challengeAddr); } catch (e) { return; }
-      if (!ch) { stopChainWatch(); return; }
+      // FIGHT DOOR (2026-11-04): a null read is a transient RPC failure, NOT
+      // a dead challenge — never stop watching on it. Only terminal chain
+      // states (below) stop the watch. The old code killed the challenger's
+      // only fast trigger on a single devnet hiccup.
+      if (!ch) { return; }
       if (ch.stateName === 'Accepted') {
         stopChainWatch();
         // FLUID ACCEPT: no 60s modal — the challenger auto-enters the lobby.
@@ -3760,19 +3821,22 @@
     return shadow;
   }
 
-  // FLUID ACCEPT (2026-11-04): shared auto-join for a challenge that just
-  // turned Accepted. One tap-free path for the challenger: no 60s modal to
-  // miss, no card to hunt for. Guards: once per session per challenge, never
-  // while already in a lobby, never mid-fight or on the result card.
-  const _autoJoinedAddrs = new Set();
-  const _seenAwaitingAddrs = new Set(); // sent challenges seen open this session
+  // FIGHT DOOR (2026-11-04): shared auto-join for an Accepted challenge.
+  // Replaces the FLUID ACCEPT one-shot rule that stranded challengers: the
+  // old code marked a challenge joined BEFORE lobby entry and never cleared
+  // it, so one timed-out lobby killed auto-join for the whole session, and
+  // the poll only fired for flips watched this session (a reload or a phone
+  // frozen in the background never saw the flip at all). New rule: entry is
+  // retryable forever. The only guards are "already in a lobby" (tracked by
+  // window._lobbyChallengeAddr, cleared on every lobby exit) and "mid-fight
+  // or on the result card" (never yank a live fight). The poll caller adds
+  // its own "menu screen only" guard so a player mid-solo is never yanked.
   function autoJoinAcceptedChallenge(challengeAddr, wagerSol, opponentWallet, role) {
     if (!challengeAddr || !opponentWallet) return;
-    if (_autoJoinedAddrs.has(challengeAddr)) return;
+    if (window._lobbyChallengeAddr) return;
     const overlay = document.getElementById('pvp-lobby-overlay');
     if (overlay && !overlay.classList.contains('hidden')) return;
     try { if (typeof screen !== 'undefined' && (screen === 'fight' || screen === 'result')) return; } catch (e) {}
-    _autoJoinedAddrs.add(challengeAddr);
     try { chainStatus('Fighting!', true); } catch (e) {}
     try { activeChainChallenge = null; updatePendingBar(); } catch (e) {}
     toast('Opponent accepted — entering the ring…', 2000);
@@ -3806,6 +3870,9 @@
         if (m) m.remove();
       });
       window._incomingPopupOpen = false;
+      // FIGHT DOOR: track which challenge this lobby belongs to, so the
+      // retryable auto-join never double-enters a lobby already open.
+      window._lobbyChallengeAddr = challengeAddr;
       // Build lobby overlay
       let overlay = document.getElementById('pvp-lobby-overlay');
       if (!overlay) {
@@ -3840,6 +3907,7 @@
         if (SAK.PvpSync) SAK.PvpSync.leaveLobby();
         const o = document.getElementById('pvp-lobby-overlay');
         if (o) o.classList.add('hidden');
+        if (window._lobbyChallengeAddr === challengeAddr) window._lobbyChallengeAddr = null;
       };
       leaveBtn.onclick = () => {
         cleanup();
@@ -3848,49 +3916,74 @@
 
       if (statusEl) statusEl.textContent = 'Waiting for opponent to join…';
 
-      SAK.PvpSync.joinLobby(challengeAddr, myWallet,
-        () => {
-          // Both online — START THE FIGHT
-          if (statusEl) statusEl.textContent = 'Both fighters ready — FIGHT!';
-          // Clear the ACCEPTED badge now that the fight is starting
-          if (SAK.PvpSync && fightOpts.chainChallenge) {
-            SAK.PvpSync.updateChallengeStatus(fightOpts.chainChallenge, 'fighting').catch(() => {});
-          }
-          setTimeout(async () => {
-            // FLUID ACCEPT: the shadow promise resolves here, at most seconds
-            // after lobby entry — never before it. Fall back to a base fighter
-            // rather than stalling the fight on a failed profile read.
-            let readyShadow = null;
-            try { readyShadow = await shadow; } catch (e) { readyShadow = null; }
-            if (!readyShadow) {
-              try { readyShadow = await resolvePvpShadow(opponentWallet, null); } catch (e) { readyShadow = null; }
-            }
-            if (!readyShadow) readyShadow = Object.assign({}, roster()[0], { name: 'Opponent', pvp: true });
-            cleanup();
-            startFight(readyShadow, 0, fightOpts);
-            if (SAK.PvpSync) SAK.PvpSync.startFight(challengeAddr, myWallet, opponentWallet, () => {
-              toast('🏆 Opponent disconnected — you win by forfeit!', 4000);
-            });
-          }, 800);
-        },
-        () => {
-          // Timeout — opponent never showed
-          cleanup();
-          toast('Opponent did not join — no fight started', 3000);
-        },
-        (wallets) => {
-          // Live presence: light up the opponent's dot when they're online
-          const p2 = document.getElementById('pvp-lobby-p2');
-          if (!p2) return;
-          const dot = p2.querySelector('.pvp-dot');
-          const state = p2.querySelector('.pvp-state');
-          const oppOnline = wallets.some(w => w !== myWallet);
-          if (dot) dot.classList.toggle('online', oppOnline);
-          if (state) state.textContent = oppOnline ? 'online' : 'waiting…';
-          const spinner = document.getElementById('pvp-lobby-spinner');
-          if (spinner) spinner.style.display = oppOnline ? 'none' : '';
+      // FIGHT DOOR (2026-11-04): the lobby no longer ejects after 90s.
+      // The old timeout dumped the player back on the card with a dead-end
+      // toast, and the next poll could re-enter them into the same wait —
+      // the loop LT reported. Now a timeout only re-checks the chain and
+      // re-arms the handshake, so the lobby waits as long as the fight is
+      // still Accepted on-chain, with an honest elapsed-wait status. LEAVE
+      // stays available for a real exit, and a fight that is no longer
+      // Accepted closes the lobby and drops its card.
+      const lobbyT0 = Date.now();
+      const onBothReady = () => {
+        // Both online — START THE FIGHT
+        if (statusEl) statusEl.textContent = 'Both fighters ready — FIGHT!';
+        // Clear the ACCEPTED badge now that the fight is starting
+        if (SAK.PvpSync && fightOpts.chainChallenge) {
+          SAK.PvpSync.updateChallengeStatus(fightOpts.chainChallenge, 'fighting').catch(() => {});
         }
-      );
+        setTimeout(async () => {
+          // FLUID ACCEPT: the shadow promise resolves here, at most seconds
+          // after lobby entry — never before it. Fall back to a base fighter
+          // rather than stalling the fight on a failed profile read.
+          let readyShadow = null;
+          try { readyShadow = await shadow; } catch (e) { readyShadow = null; }
+          if (!readyShadow) {
+            try { readyShadow = await resolvePvpShadow(opponentWallet, null); } catch (e) { readyShadow = null; }
+          }
+          if (!readyShadow) readyShadow = Object.assign({}, roster()[0], { name: 'Opponent', pvp: true });
+          cleanup();
+          startFight(readyShadow, 0, fightOpts);
+          if (SAK.PvpSync) SAK.PvpSync.startFight(challengeAddr, myWallet, opponentWallet, () => {
+            toast('🏆 Opponent disconnected — you win by forfeit!', 4000);
+          });
+        }, 800);
+      };
+      const onPresence = (wallets) => {
+        // Live presence: light up the opponent's dot when they're online
+        const p2 = document.getElementById('pvp-lobby-p2');
+        if (!p2) return;
+        const dot = p2.querySelector('.pvp-dot');
+        const state = p2.querySelector('.pvp-state');
+        const oppOnline = wallets.some(w => w !== myWallet);
+        if (dot) dot.classList.toggle('online', oppOnline);
+        if (state) state.textContent = oppOnline ? 'online' : 'waiting…';
+        const spinner = document.getElementById('pvp-lobby-spinner');
+        if (spinner) spinner.style.display = oppOnline ? 'none' : '';
+      };
+      const onLobbyTimeout = () => {
+        // No eject: confirm the fight is still Accepted, then wait on.
+        const mins = Math.max(1, Math.floor((Date.now() - lobbyT0) / 60000));
+        if (statusEl) statusEl.textContent = 'Still waiting for opponent… (' + mins + ' min)';
+        if (SAK.SolanaEscrow) {
+          SAK.SolanaEscrow.getChallenge(challengeAddr).then(live => {
+            if (live && live.stateName !== 'Accepted') {
+              cleanup();
+              toast('This fight is ' + live.stateName + ' — leaving the lobby', 2600);
+              fightReadyChallenges = (fightReadyChallenges || []).filter(x => x.challenge_addr !== challengeAddr);
+              try { renderFightReady(); } catch (e) {}
+              return;
+            }
+            enterLobby();
+          }).catch(() => { enterLobby(); });
+        } else {
+          enterLobby();
+        }
+      };
+      const enterLobby = () => {
+        if (SAK.PvpSync) SAK.PvpSync.joinLobby(challengeAddr, myWallet, onBothReady, onLobbyTimeout, onPresence);
+      };
+      enterLobby();
     }
 
   // ---- SOLO VS HOUSE (devnet) ----

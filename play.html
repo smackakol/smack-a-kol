@@ -297,6 +297,10 @@
   <div id="modal-pvp" class="modal hidden">
     <div class="modal-card pvp-card">
       <h3><img src="assets/hand-icon.png" alt="" style="width:42px;height:42px;vertical-align:-10px;margin-right:6px" /> PVP LOBBY <span id="pvp-badge" class="pvp-badge hidden"></span></h3>
+      <!-- FIGHT DOOR (2026-11-04): the modal's only exit was tapping the thin
+           dark edge around the card — challengers reported they couldn't close
+           it. Now there is a real visible CLOSE button. -->
+      <div style="text-align:right;margin-top:-4px"><button class="btn btn-grey" data-close>✕ CLOSE</button></div>
       <div id="my-challenges-bar">
         <button id="my-challenges-toggle" class="mc-toggle">📋 MY CHALLENGES <span id="my-challenges-count" class="mc-count hidden"></span><span class="mc-chev">▾</span></button>
         <div id="my-challenges-list" class="mc-list hidden"></div>
@@ -620,7 +624,7 @@
 <script src="js/pvp-sync.js?v=stuck-1"></script>
 <script src="js/solana-house.js?v=7"></script>
 <script src="js/contracts.js?v=1"></script>
-<script src="js/game-v3.js?v=pvpfluid-1"></script>
+<script src="js/game-v3.js?v=fightdoor-1"></script>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </body>
 </html>
