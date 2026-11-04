@@ -2885,34 +2885,57 @@
       closePopup();
       // Accept the on-chain challenge directly
       if (SAK.SolanaEscrow && c.challenge_addr) {
+        let landed = false;
         try {
           toast('Accepting — approve in wallet…', 2400);
           await SAK.SolanaEscrow.acceptChallenge(c.challenge_addr);
-          toast('Accepted! Entering fight lobby…', 2000);
-          // Mark accepted in Supabase (drives the challenger's ACCEPTED badge,
-          // stops this popup resurfacing) and publish our fighter look so both
-          // phones render identical fighters — mirrors the ?sol_challenge= path.
-          if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(c.challenge_addr, 'accepted');
-          if (SAK.PvpSync && S.profile && S.profile.avatar) SAK.PvpSync.publishFighterSnapshot(c.challenge_addr, 'acceptor', S.profile.avatar);
-          // The accept flow in checkIncomingChainChallenge handles the rest,
-          // but we can trigger it by setting the URL param and re-running
-          window._seenIncomingChallenges.delete(c.challenge_addr);
-          // Directly enter the lobby via the standard accept path
-          const ch = await SAK.SolanaEscrow.getChallenge(c.challenge_addr);
-          if (ch && typeof startPvpFightWithLobby === 'function') {
-            let snaps = null;
-            try { snaps = await SAK.PvpSync.getFighterSnapshots(c.challenge_addr); } catch (e) {}
-            const shadow = await resolvePvpShadow(ch.challenger, snaps && snaps.challengerLook);
-            startPvpFightWithLobby(shadow,
-              { mode: 'classic', pvp: true, chainChallenge: c.challenge_addr, chainWagerSol: ch.wagerSol, chainRole: 'acceptor', chainOpponentWallet: ch.challenger },
-              c.challenge_addr, W.address, ch.challenger);
-          }
+          landed = true;
         } catch (e) {
-          // Release the popup guard so the card can resurface on the next poll —
-          // the acceptor can retry cleanly. Idempotent accept means a retry
-          // after a landed-but-unconfirmed tx now succeeds instead of erroring.
-          window._seenIncomingChallenges.delete(c.challenge_addr);
-          toast('Accept failed: ' + (e.message || e), 2600);
+          // The tx may still have landed (confirmation timeout, wallet race):
+          // check the chain before calling it a failure — a landed accept must
+          // never strand the player on a retry loop.
+          try {
+            const chk = await SAK.SolanaEscrow.getChallenge(c.challenge_addr);
+            if (chk && chk.stateName === 'Accepted') landed = true;
+          } catch (e2) {}
+          if (!landed) {
+            // Genuine failure (wallet reject, etc.): re-arm the popup so the
+            // acceptor can retry cleanly on the next poll.
+            if (window._seenIncomingChallenges) window._seenIncomingChallenges.delete(c.challenge_addr);
+            toast('Accept failed: ' + (e.message || e), 2600);
+            return;
+          }
+        }
+        // FLUID ACCEPT (2026-11-04): the accept LANDED. Lock this challenge
+        // as handled so the poller can never re-pop it — the old code deleted
+        // it from the seen set here, and a lagging chain read re-showed the
+        // card on top of the fight lobby (the stuck-popup bug).
+        if (window._seenIncomingChallenges) window._seenIncomingChallenges.add(c.challenge_addr);
+        try { _incomingChainCache.set(c.challenge_addr, { at: Date.now(), ch: { stateName: 'Accepted' } }); } catch (e) {}
+        toast('Accepted! Entering fight lobby…', 2000);
+        // Supabase status + snapshot publish are fire-and-forget: they drive
+        // the challenger's badge/card, but must never gate entering the lobby.
+        // (Publish our fighter look so both phones render identical fighters —
+        // mirrors the ?sol_challenge= path.)
+        if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(c.challenge_addr, 'accepted');
+        if (SAK.PvpSync && S.profile && S.profile.avatar) SAK.PvpSync.publishFighterSnapshot(c.challenge_addr, 'acceptor', S.profile.avatar);
+        // Enter the lobby IMMEDIATELY — the shadow resolves in the background
+        // and is awaited only when both fighters are ready to start.
+        const fightOpts = { mode: 'classic', pvp: true, chainChallenge: c.challenge_addr, chainWagerSol: c.wager_sol || null, chainRole: 'acceptor', chainOpponentWallet: c.challenger };
+        // Backfill the wager from chain in the background (used at fight
+        // start, seconds after the handshake — not at lobby entry).
+        if (!fightOpts.chainWagerSol && SAK.SolanaEscrow) {
+          SAK.SolanaEscrow.getChallenge(c.challenge_addr).then(ch2 => {
+            if (ch2 && ch2.wagerSol) fightOpts.chainWagerSol = ch2.wagerSol;
+          }).catch(() => {});
+        }
+        const shadowPromise = (async () => {
+          let snaps = null;
+          try { if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) snaps = await SAK.PvpSync.getFighterSnapshots(c.challenge_addr); } catch (e) {}
+          return resolvePvpShadow(c.challenger, snaps && snaps.challengerLook);
+        })();
+        if (typeof startPvpFightWithLobby === 'function') {
+          startPvpFightWithLobby(shadowPromise, fightOpts, c.challenge_addr, W.address, c.challenger);
         }
       }
     };
@@ -3143,8 +3166,9 @@
         try { snaps = await SAK.PvpSync.getFighterSnapshots(ch.challenge_addr); } catch (e) {}
       }
       const opponentLook = role === 'challenger' ? (snaps && snaps.acceptorLook) : (snaps && snaps.challengerLook);
-      const shadow = await resolvePvpShadow(opponentWallet, opponentLook);
-      startPvpFightWithLobby(shadow,
+      // FLUID ACCEPT: lobby now — the profile fetch inside resolvePvpShadow
+      // runs in the background and is awaited only at fight start.
+      startPvpFightWithLobby(resolvePvpShadow(opponentWallet, opponentLook),
         { mode: 'classic', pvp: true, chainChallenge: ch.challenge_addr, chainWagerSol: live.wagerSol, chainRole: role, chainOpponentWallet: opponentWallet },
         ch.challenge_addr, W.address, opponentWallet);
     } catch (e) {
@@ -3282,6 +3306,18 @@
             badge.className = 'pvp-badge hidden';
           }
         }
+      } catch (e) {}
+      // FLUID ACCEPT: a sent challenge that flips open -> accepted mid-session
+      // auto-enters the lobby — no badge-hunt, no missed window. Only fires
+      // for challenges seen awaiting THIS session, so stale accepted rows from
+      // before login never yank the player anywhere (those stay on the card).
+      try {
+        (awaiting || []).forEach(c => { if (c.challenge_addr) _seenAwaitingAddrs.add(c.challenge_addr); });
+        (accepted || []).forEach(c => {
+          if (c.challenge_addr && _seenAwaitingAddrs.has(c.challenge_addr)) {
+            autoJoinAcceptedChallenge(c.challenge_addr, c.wager_sol, c.opponent, 'challenger');
+          }
+        });
       } catch (e) {}
       // Incoming direct challenge popup — works from any screen.
       // Gated by maybeShowIncoming: chain-verified Open + unexpired only.
@@ -3696,7 +3732,8 @@
       if (!ch) { stopChainWatch(); return; }
       if (ch.stateName === 'Accepted') {
         stopChainWatch();
-        showAcceptedModal(ch, wagerSol);
+        // FLUID ACCEPT: no 60s modal — the challenger auto-enters the lobby.
+        autoJoinAcceptedChallenge(ch.address, wagerSol, ch.opponent, 'challenger');
       } else if (ch.stateName !== 'Open') {
         stopChainWatch();
         chainStatus('Challenge is no longer open.', true);
@@ -3723,6 +3760,35 @@
     return shadow;
   }
 
+  // FLUID ACCEPT (2026-11-04): shared auto-join for a challenge that just
+  // turned Accepted. One tap-free path for the challenger: no 60s modal to
+  // miss, no card to hunt for. Guards: once per session per challenge, never
+  // while already in a lobby, never mid-fight or on the result card.
+  const _autoJoinedAddrs = new Set();
+  const _seenAwaitingAddrs = new Set(); // sent challenges seen open this session
+  function autoJoinAcceptedChallenge(challengeAddr, wagerSol, opponentWallet, role) {
+    if (!challengeAddr || !opponentWallet) return;
+    if (_autoJoinedAddrs.has(challengeAddr)) return;
+    const overlay = document.getElementById('pvp-lobby-overlay');
+    if (overlay && !overlay.classList.contains('hidden')) return;
+    try { if (typeof screen !== 'undefined' && (screen === 'fight' || screen === 'result')) return; } catch (e) {}
+    _autoJoinedAddrs.add(challengeAddr);
+    try { chainStatus('Fighting!', true); } catch (e) {}
+    try { activeChainChallenge = null; updatePendingBar(); } catch (e) {}
+    toast('Opponent accepted — entering the ring…', 2000);
+    const shadowPromise = (async () => {
+      let snaps = null;
+      try { if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) snaps = await SAK.PvpSync.getFighterSnapshots(challengeAddr); } catch (e) {}
+      const look = role === 'challenger' ? (snaps && snaps.acceptorLook) : (snaps && snaps.challengerLook);
+      return resolvePvpShadow(opponentWallet, look);
+    })();
+    if (typeof startPvpFightWithLobby === 'function') {
+      startPvpFightWithLobby(shadowPromise,
+        { mode: 'classic', pvp: true, chainChallenge: challengeAddr, chainWagerSol: wagerSol, chainRole: role, chainOpponentWallet: opponentWallet },
+        challengeAddr, W.address, opponentWallet);
+    }
+  }
+
   // HOISTED 2026-10-22 (marker:spfl-hoist): lobby entry must live at top level —
   // BOTH accept paths (popup + challenge link) call it; nested inside
   // showAcceptedModal it was invisible to them (acceptor ReferenceError).
@@ -3730,6 +3796,16 @@
     // simultaneously before the fight starts. Fixes ghost fights when
     // the acceptor joins minutes after the challenger left.
     function startPvpFightWithLobby(shadow, fightOpts, challengeAddr, myWallet, opponentWallet) {
+      // FLUID ACCEPT (2026-11-04): never let a stale challenge modal sit on
+      // top of the lobby — a re-popped modal used to cover this overlay and
+      // strand both phones (challenger waiting in the ring, opponent on a card).
+      // `shadow` may be a promise: it is awaited only when both fighters are
+      // ready, so entering the lobby never waits on profile/snapshot reads.
+      ['incoming-challenge-modal', 'chain-accepted-modal', 'chain-challenge-modal'].forEach(id => {
+        const m = document.getElementById(id);
+        if (m) m.remove();
+      });
+      window._incomingPopupOpen = false;
       // Build lobby overlay
       let overlay = document.getElementById('pvp-lobby-overlay');
       if (!overlay) {
@@ -3780,9 +3856,18 @@
           if (SAK.PvpSync && fightOpts.chainChallenge) {
             SAK.PvpSync.updateChallengeStatus(fightOpts.chainChallenge, 'fighting').catch(() => {});
           }
-          setTimeout(() => {
+          setTimeout(async () => {
+            // FLUID ACCEPT: the shadow promise resolves here, at most seconds
+            // after lobby entry — never before it. Fall back to a base fighter
+            // rather than stalling the fight on a failed profile read.
+            let readyShadow = null;
+            try { readyShadow = await shadow; } catch (e) { readyShadow = null; }
+            if (!readyShadow) {
+              try { readyShadow = await resolvePvpShadow(opponentWallet, null); } catch (e) { readyShadow = null; }
+            }
+            if (!readyShadow) readyShadow = Object.assign({}, roster()[0], { name: 'Opponent', pvp: true });
             cleanup();
-            startFight(shadow, 0, fightOpts);
+            startFight(readyShadow, 0, fightOpts);
             if (SAK.PvpSync) SAK.PvpSync.startFight(challengeAddr, myWallet, opponentWallet, () => {
               toast('🏆 Opponent disconnected — you win by forfeit!', 4000);
             });
@@ -3807,57 +3892,6 @@
         }
       );
     }
-
-  function showAcceptedModal(ch, wagerSol) {
-    const old = document.getElementById('chain-accepted-modal');
-    if (old) old.remove();
-    const oppShort = (ch.opponent || '').slice(0, 4) + '…' + (ch.opponent || '').slice(-4);
-    let secs = 60;
-    const modal = document.createElement('div');
-    modal.id = 'chain-accepted-modal';
-    modal.innerHTML =
-      '<div style="position:fixed;inset:0;z-index:9999;background:rgba(5,5,15,0.94);display:flex;align-items:center;justify-content:center;padding:20px;">' +
-      '<div style="background:linear-gradient(160deg,#0f2f1a,#0a1f12);border:2px solid #4ade80;border-radius:20px;padding:28px 24px;max-width:380px;width:100%;text-align:center;box-shadow:0 0 60px rgba(74,222,128,0.3);">' +
-      '<div style="font-size:52px;margin-bottom:8px;">\u{1F525}</div>' +
-      '<div style="font-size:24px;font-weight:800;color:#4ade80;margin-bottom:4px;">OPPONENT ACCEPTED!</div>' +
-      '<div style="font-size:13px;color:#aaa;margin-bottom:16px;">' + oppShort + ' locked ' + wagerSol + ' SOL</div>' +
-      '<div style="font-size:48px;font-weight:800;color:#f5c542;margin:12px 0;" id="chain-join-timer">' + secs + '</div>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:16px;">seconds to join the fight</div>' +
-      '<button id="chain-join-btn" style="display:block;width:100%;padding:16px;margin:8px 0;border:none;border-radius:14px;font-size:18px;font-weight:800;cursor:pointer;background:linear-gradient(180deg,#f5c542,#d4a017);color:#000;">\u{1F94A} JOIN FIGHT</button>' +
-      '</div></div>';
-    document.body.appendChild(modal);
-    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
-    A.perfect();
-    const timerEl = document.getElementById('chain-join-timer');
-    const countdown = setInterval(() => {
-      secs--;
-      if (timerEl) timerEl.textContent = secs;
-      if (secs <= 0) {
-        clearInterval(countdown);
-        const m = document.getElementById('chain-accepted-modal');
-        if (m) m.remove();
-        toast('Opponent is waiting — rejoin from the lobby', 2600);
-      }
-    }, 1000);
-    document.getElementById('chain-join-btn').onclick = async () => {
-      clearInterval(countdown);
-      const m = document.getElementById('chain-accepted-modal');
-      if (m) m.remove();
-      chainStatus('Fighting!', true);
-      // v2: prefer the acceptor's published snapshot (identical on both phones)
-      let snapsB = null;
-      if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) {
-        try { snapsB = await SAK.PvpSync.getFighterSnapshots(ch.address); } catch (e) {}
-      }
-      const shadow = await resolvePvpShadow(ch.opponent, snapsB && snapsB.acceptorLook);
-      // Challenger fights; winner settles via SETTLE & CLAIM
-      // v2: lobby handshake — wait until acceptor is confirmed online
-      activeChainChallenge = null; updatePendingBar();
-      startPvpFightWithLobby(shadow,
-        { mode: 'classic', pvp: true, chainChallenge: ch.address, chainWagerSol: wagerSol, chainRole: 'challenger', chainOpponentWallet: ch.opponent },
-        ch.address, W.address, ch.opponent);
-    };
-  }
 
   // ---- SOLO VS HOUSE (devnet) ----
   let soloWager = 0.02;
@@ -4768,25 +4802,40 @@
     const go = async () => {
       closeChainModal();
       if (!W.isConnected) { openWalletModal(); toast('Connect wallet to accept \u{1F45B}', 2200); return; }
+      let landed = false;
       try {
         toast('Accepting — approve the matching deposit…', 2400);
         await SAK.SolanaEscrow.acceptChallenge(ch.address);
-        toast(`Accepted! ${sol} SOL each on the line \u2694\uFE0F`, 2600);
-        if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(ch.address, 'accepted');
-        // v2: publish my fighter look snapshot
-        if (SAK.PvpSync && S.profile && S.profile.avatar) SAK.PvpSync.publishFighterSnapshot(ch.address, 'acceptor', S.profile.avatar);
-        // v2: prefer the challenger's published snapshot (identical on both phones)
-        let snapsC = null;
-        if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) {
-          try { snapsC = await SAK.PvpSync.getFighterSnapshots(ch.address); } catch (e) {}
-        }
-        const shadow = await resolvePvpShadow(ch.challenger, snapsC && snapsC.challengerLook);
+        landed = true;
+      } catch (e) {
+        // Same fail-soft rule as the popup path: a landed tx must never read
+        // as a failure just because confirmation raced.
+        try {
+          const chk = await SAK.SolanaEscrow.getChallenge(ch.address);
+          if (chk && chk.stateName === 'Accepted') landed = true;
+        } catch (e2) {}
+        if (!landed) { toast('Accept failed: ' + (e.message || e), 2600); return; }
+      }
+      toast(`Accepted! ${sol} SOL each on the line \u2694\uFE0F`, 2600);
+      // FLUID ACCEPT: lock this challenge as handled so the global watcher
+      // can never pop it over the lobby we are about to enter.
+      if (window._seenIncomingChallenges) window._seenIncomingChallenges.add(ch.address);
+      try { _incomingChainCache.set(ch.address, { at: Date.now(), ch: { stateName: 'Accepted' } }); } catch (e) {}
+      if (SAK.PvpSync) SAK.PvpSync.updateChallengeStatus(ch.address, 'accepted');
+      // v2: publish my fighter look snapshot
+      if (SAK.PvpSync && S.profile && S.profile.avatar) SAK.PvpSync.publishFighterSnapshot(ch.address, 'acceptor', S.profile.avatar);
+      // FLUID ACCEPT: lobby now, shadow resolves in the background.
       // v2: lobby handshake — wait until challenger is confirmed online.
       // No more ghost fights when accepting minutes after the challenge.
-      startPvpFightWithLobby(shadow,
+      const shadowPromise = (async () => {
+        // v2: prefer the challenger's published snapshot (identical on both phones)
+        let snapsC = null;
+        try { if (SAK.PvpSync && SAK.PvpSync.getFighterSnapshots) snapsC = await SAK.PvpSync.getFighterSnapshots(ch.address); } catch (e) {}
+        return resolvePvpShadow(ch.challenger, snapsC && snapsC.challengerLook);
+      })();
+      startPvpFightWithLobby(shadowPromise,
         { mode: 'classic', pvp: true, chainChallenge: ch.address, chainWagerSol: sol, chainRole: 'acceptor', chainOpponentWallet: ch.challenger },
         ch.address, W.address, ch.challenger);
-      } catch (e) { toast('Accept failed: ' + (e.message || e), 2600); }
     };
     const closeChainModal = () => {
       const m = document.getElementById('chain-challenge-modal');
