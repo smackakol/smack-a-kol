@@ -3942,6 +3942,14 @@
             try { readyShadow = await resolvePvpShadow(opponentWallet, null); } catch (e) { readyShadow = null; }
           }
           if (!readyShadow) readyShadow = Object.assign({}, roster()[0], { name: 'Opponent', pvp: true });
+          // FIGHTDOOR FOLLOW-UP (2026-11-04): the PvP lobby modal sits at
+          // z-60 above the fight screen (z-10) and nothing in the fight-start
+          // path ever closed it — both phones had to dismiss it by hand
+          // before they could see or play the fight they had just entered.
+          // Close it here, at fight start only: closing it at lobby entry
+          // would strand LEAVE, which returns to the modal and its card.
+          const mp = document.getElementById('modal-pvp');
+          if (mp) mp.classList.add('hidden');
           cleanup();
           startFight(readyShadow, 0, fightOpts);
           if (SAK.PvpSync) SAK.PvpSync.startFight(challengeAddr, myWallet, opponentWallet, () => {
