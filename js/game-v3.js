@@ -5669,6 +5669,8 @@
         setVal('admin-rewards-buyback', rw.buybackWallet);
         setVal('admin-rewards-bps', rw.rewardsBps);
         setVal('admin-rewards-buyback-bps', rw.buybackBps);
+        setVal('admin-dev-wallet', rw.devWallet);
+        setVal('admin-dev-bps', rw.devBps);
       }
       if (TH && TH.poolAtaStatus) {
         const pool = (rw ? rw.rewardsPool : (document.getElementById('admin-rewards-pool') || {}).value || '').trim();
@@ -5677,6 +5679,12 @@
           if (stEl) stEl.textContent = !s ? 'Pool status unavailable right now.'
             : s.exists ? 'Pool token account: ready ✅'
             : 'Pool token account: MISSING — tap CREATE below before SPL rewards go live, or SPL bets will fail once rewards are active.';
+        }
+        const dev = (rw ? rw.devWallet : (document.getElementById('admin-dev-wallet') || {}).value || '').trim();
+        if (dev && stEl) {
+          const ds = await TH.poolAtaStatus(dev).catch(() => null);
+          if (ds && !ds.exists) stEl.textContent += ' Dev token account: MISSING — tap CREATE DEV below before SPL dev slices go live.';
+          else if (ds && ds.exists) stEl.textContent += ' Dev token account: ready ✅';
         }
       }
     } catch (e) { if (stEl) stEl.textContent = 'Pool status unavailable right now.'; }
@@ -5687,22 +5695,24 @@
     const buyback = (document.getElementById('admin-rewards-buyback') || {}).value || '';
     const rb = +((document.getElementById('admin-rewards-bps') || {}).value || 0);
     const bb = +((document.getElementById('admin-rewards-buyback-bps') || {}).value || 0);
+    const dev = (document.getElementById('admin-dev-wallet') || {}).value || '';
+    const db = +((document.getElementById('admin-dev-bps') || {}).value || 0);
     const okAddr = a => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test((a || '').trim());
-    if (!okAddr(pool) || !okAddr(buyback)) { toast('⚠️ Check the pool and buyback wallet addresses', 3000); return; }
-    if (![rb, bb].every(Number.isFinite) || rb < 0 || bb < 0 || rb > 500 || bb > 500) {
+    if (!okAddr(pool) || !okAddr(buyback) || !okAddr(dev)) { toast('⚠️ Check the pool, buyback and dev wallet addresses', 3000); return; }
+    if (![rb, bb, db].every(Number.isFinite) || rb < 0 || bb < 0 || db < 0 || rb > 500 || bb > 500 || db > 500) {
       toast('⚠️ Rates must be 0–500 basis points (max 5%)', 3000); return;
     }
     btnEl.disabled = true; btnEl.textContent = 'APPROVE IN WALLET (1 OF 2)…';
     try {
-      await SAK.SolanaHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb);
+      await SAK.SolanaHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb, dev.trim(), db);
       btnEl.textContent = 'APPROVE IN WALLET (2 OF 2)…';
-      await SAK.SolanaTokenHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb);
-      toast('✅ Rewards pool saved to both houses', 3000);
+      await SAK.SolanaTokenHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb, dev.trim(), db);
+      toast('✅ Rewards pool + dev slice saved to both houses', 3000);
     } catch (e) {
       const m = String((e && e.message) || '');
       toast(/reject|denied|cancel/i.test(m) ? 'Save cancelled in wallet (the other house may already be saved — check the status)' : '⚠️ Rewards save failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
     }
-    btnEl.disabled = false; btnEl.textContent = '💾 SAVE REWARDS POOL';
+    btnEl.disabled = false; btnEl.textContent = '💾 SAVE REWARDS + DEV';
     refreshAdminRewards();
   }
 
@@ -5718,6 +5728,21 @@
       toast(/reject|denied|cancel/i.test(m) ? 'Create cancelled in wallet' : '⚠️ Create failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
     }
     btnEl.disabled = false; btnEl.textContent = '🏦 CREATE POOL TOKEN ACCOUNT';
+    refreshAdminRewards();
+  }
+
+  async function createDevAta(btnEl) {
+    const dev = (document.getElementById('admin-dev-wallet') || {}).value || '';
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(dev.trim())) { toast('⚠️ Check the dev wallet address first', 3000); return; }
+    btnEl.disabled = true; btnEl.textContent = 'APPROVE IN WALLET…';
+    try {
+      const r = await SAK.SolanaTokenHouse.ensureDevAta(dev.trim());
+      toast(r.created ? '✅ Dev token account created' : 'Dev token account already exists ✅', 3000);
+    } catch (e) {
+      const m = String((e && e.message) || '');
+      toast(/reject|denied|cancel/i.test(m) ? 'Create cancelled in wallet' : '⚠️ Create failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
+    }
+    btnEl.disabled = false; btnEl.textContent = '🏦 CREATE DEV TOKEN ACCOUNT';
     refreshAdminRewards();
   }
 
@@ -6083,6 +6108,8 @@
     if (rwBtn) rwBtn.onclick = () => { A.click(); saveAdminRewards(rwBtn); };
     const ataBtn = $('#admin-rewards-ata');
     if (ataBtn) ataBtn.onclick = () => { A.click(); createPoolAta(ataBtn); };
+    const devAtaBtn = $('#admin-dev-ata');
+    if (devAtaBtn) devAtaBtn.onclick = () => { A.click(); createDevAta(devAtaBtn); };
     refreshAdminRewards();
     const plBtn = $('#admin-players-refresh');
     if (plBtn) plBtn.onclick = () => { A.click(); refreshAdminPlayers(); };
