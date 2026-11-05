@@ -22,6 +22,15 @@
   const esc = str => String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };  // local day
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  // Live house fee package (verified on-chain 2026-11-05). Single source of
+  // truth for every fee display and payout below - change the rates here,
+  // not per spot. SMACK: 2.2x on the 98% net (0.25% burn + 0.75% rewards
+  // + 1% dev). SOL: 1.9x on the 98% net (1% buyback skim + 1% dev); SOL
+  // never burns.
+  const HOUSE_FEES = {
+    SMACK: { payout: 2.2, burnBps: 25, rewardsBps: 75, devBps: 100, net: 0.98 },
+    SOL: { payout: 1.9, buybackBps: 100, devBps: 100, net: 0.98 },
+  };
 
   const S = SAK.Storage.load();      // persistent save
   const W = SAK.Wallet, A = SAK.Audio, P = SAK.Points;
@@ -1583,9 +1592,9 @@
     $('#stake-tag').innerHTML = '' + (chainWager
       ? `⛓ ${chainWager} SOL <span class="escrow-badge">ON-CHAIN · DEVNET</span>`
       : soloWager
-      ? `🏠 BET ◎ ${fmtSolAmt(soloWager)} → WIN ◎ ${fmtSolAmt(soloWager * 1.9)}`
+      ? `🏠 BET ◎ ${fmtSolAmt(soloWager)} → WIN ◎ ${fmtSolAmt(soloWager * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout)}`
       : soloTok
-      ? `🏠 BET ${soloTok.toLocaleString('en-US')} Token → WIN ${Math.floor(soloTok * 0.99 * 1.9).toLocaleString('en-US')} Token`
+      ? `🏠 BET ${soloTok.toLocaleString('en-US')} Token → WIN ${Math.floor(soloTok * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout).toLocaleString('en-US')} Token`
       : bet
       ? `BET ${ptsHTML()} ${fmt(bet)} → ${fmt(boosted(bet * kol.payout))}`
       : `FREE · WIN ${ptsHTML()} +${fmt(modePts(kol, mode))}`);
@@ -2347,8 +2356,8 @@
           // NOTE: the SOL bet object carries no currency field (only the
           // SMACK one sets currency:'SMACK') — default to SOL, never the
           // raw value (it recorded SOL wagers as currency FREE).
-          if (sh.currency === 'SMACK') { fhCurrency = 'SMACK'; fhWager = sh.wagerTokens || 0; fhPayout = win ? Math.floor(fhWager * 0.99 * 1.9) : 0; }
-          else { fhCurrency = 'SOL'; fhWager = parseFloat(sh.wagerSol || 0); fhPayout = win ? fhWager * 1.9 : 0; }
+          if (sh.currency === 'SMACK') { fhCurrency = 'SMACK'; fhWager = sh.wagerTokens || 0; fhPayout = win ? Math.floor(fhWager * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout) : 0; }
+          else { fhCurrency = 'SOL'; fhWager = parseFloat(sh.wagerSol || 0); fhPayout = win ? fhWager * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout : 0; }
         } else if (k.pvp) {
           fhMode = 'pvp'; fhCurrency = 'SOL';
           fhWager = parseFloat((F.opts && F.opts.chainWagerSol) || 0);
@@ -2437,7 +2446,7 @@
           const r = F.opts.soloResult;
           if (F.opts.soloHouse.currency === 'SMACK') {
             const wT = F.opts.soloHouse.wagerTokens || 0;
-            const burnLine = `<div><span>Burn (1%)</span><b>-${fmtTokAmt(wT * 0.01)} Token 🔥</b></div>`;
+            const burnLine = `<div><span>Burn (${HOUSE_FEES.SMACK.burnBps / 100}%)</span><b>-${fmtTokAmt(wT * HOUSE_FEES.SMACK.burnBps / 10000)} Token 🔥</b></div><div><span>Rewards pool (${HOUSE_FEES.SMACK.rewardsBps / 100}%)</span><b>-${fmtTokAmt(wT * HOUSE_FEES.SMACK.rewardsBps / 10000)} Token 🏆</b></div>`;
             if (r && r.won) {
               return `<div class="bd-head" style="margin-top:8px;"><img class="smack-hand" src="assets/hand-icon-sm.png" alt=""> SOLO VS Token HOUSE (DEVNET)</div>
                 <div><span>Wagered</span><b>${fmtTokAmt(wT)} Token</b></div>
@@ -2455,8 +2464,8 @@
               <div class="fine" style="font-size:11px;color:#888;">⏳ The house settles this automatically — no wallet step needed</div>`;
           }
           const w = parseFloat(F.opts.soloHouse.wagerSol || 0);
-          // SOL skips the 1% burn — only SPL burns
-          const burnLine = `<div><span>Burn (1%)</span><b>0 SOL <small style="color:#666;">(SOL skips burn)</small></b></div>`;
+          // SOL skips the burn — 1% of a SOL wager is skimmed to buy Token for the rewards pool
+          const burnLine = `<div><span>Buyback (${HOUSE_FEES.SOL.buybackBps / 100}%)</span><b>-${Math.round(w * HOUSE_FEES.SOL.buybackBps / 10000 * 1000) / 1000} SOL <small style="color:#666;">(buys Token for the rewards pool)</small></b></div>`;
           if (r && r.won) {
             return `<div class="bd-head" style="margin-top:8px;">🏠 SOLO VS HOUSE (DEVNET)</div>
               <div><span>Wagered</span><b>${w} SOL</b></div>
@@ -2598,14 +2607,14 @@
         if (sh.currency === 'SMACK') {
           const wT = sh.wagerTokens || 0;
           wager = { head: 'SOLO VS Token HOUSE (DEVNET)', hand: true,
-            lines: [['Wagered', fmtTokAmt(wT) + ' Token'], ['Burn (1%)', '−' + fmtTokAmt(wT * 0.01) + ' Token 🔥']], fine: null };
+            lines: [['Wagered', fmtTokAmt(wT) + ' Token'], ['Burn (' + (HOUSE_FEES.SMACK.burnBps / 100) + '%)', '−' + fmtTokAmt(wT * HOUSE_FEES.SMACK.burnBps / 10000) + ' Token 🔥'], ['Rewards pool (' + (HOUSE_FEES.SMACK.rewardsBps / 100) + '%)', '−' + fmtTokAmt(wT * HOUSE_FEES.SMACK.rewardsBps / 10000) + ' Token 🏆']], fine: null };
           if (r && r.won) wager.lines.push(['You won', '+' + fmtTokAmt(r.payoutTokens || 0) + ' Token', 'win']);
           else if (r && !r.won) wager.lines.push(['You lost', '−' + fmtTokAmt(wT) + ' Token', 'neg']);
           else wager.fine = '⏳ The house settles this automatically — no wallet step needed';
         } else {
           const w = parseFloat(sh.wagerSol || 0);
           wager = { head: '🏠 SOLO VS HOUSE (DEVNET)',
-            lines: [['Wagered', w + ' SOL'], ['Burn (1%)', '0 SOL (SOL skips burn)']], fine: null };
+            lines: [['Wagered', w + ' SOL'], ['Buyback (' + (HOUSE_FEES.SOL.buybackBps / 100) + '%)', '−' + (Math.round(w * HOUSE_FEES.SOL.buybackBps / 10000 * 1000) / 1000) + ' SOL']], fine: null };
           if (r && r.won) wager.lines.push(['You won', '+' + r.payout.toFixed(3) + ' SOL', 'win']);
           else if (r && !r.won) wager.lines.push(['You lost', '−' + w + ' SOL', 'neg']);
           else wager.fine = '⏳ The house settles this automatically — no wallet step needed';
@@ -4201,7 +4210,7 @@
       return (Math.round(value * 1000) / 1000) + ' SOL';
     },
     payoutFor(credit) {
-      return credit.currency === 'SMACK' ? Math.floor(credit.value * 1.9) : Math.round(credit.value * 1.9 * 1000) / 1000;
+      return credit.currency === 'SMACK' ? Math.floor(credit.value * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout) : Math.round(credit.value * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout * 1000) / 1000;
     },
     showCelebration(grant) {
       const m = $('#streak-celebration'); if (!m) return;
@@ -4267,7 +4276,7 @@
       if (!showRow) useFreeFight = false;
       else {
         const first = credits[0];
-        $('#solo-ff-label').textContent = `Use a free fight (${SAK.StreakRewards.fmtValue(first.currency, first.value)}) — win pays ×1.9, lose nothing${credits.length > 1 ? ` · ${credits.length} available` : ''}`;
+        $('#solo-ff-label').textContent = `Use a free fight (${SAK.StreakRewards.fmtValue(first.currency, first.value)}) — win pays ×${first.currency === 'SMACK' ? HOUSE_FEES.SMACK.payout : HOUSE_FEES.SOL.payout}, lose nothing${credits.length > 1 ? ` · ${credits.length} available` : ''}`;
         const cb = $('#solo-use-freefight');
         if (cb) cb.checked = useFreeFight;
       }
@@ -4333,7 +4342,7 @@
         <div>WIN ${ptsHTML()}<b>+${fmt(win)}</b></div>
         ${soloMode === 'wager'
           ? (soloCurrency === 'SMACK'
-            ? `<div>Token WIN PAYS <b style="color:#2ee66b">×1.9</b> <small style="color:#888">· 1% of the wager burns 🔥</small></div>`
+            ? `<div>Token WIN PAYS <b style="color:#2ee66b">×${HOUSE_FEES.SMACK.payout}</b> <small style="color:#888">· ${HOUSE_FEES.SMACK.burnBps / 100}% burns, ${HOUSE_FEES.SMACK.rewardsBps / 100}% to rewards pool</small></div>`
             : `<div>SOL WIN PAYS <b style="color:#2ee66b">×1.9</b></div>`)
           : `<div>BET PAYS <b style="color:#2ee66b">x${k.payout.toFixed(1)}</b></div>`}
       </div>`;
@@ -4582,8 +4591,8 @@
     if (!mine) return null;
     if (mine.currency === 'SMACK') {
       if (!SAK.SolanaTokenHouse) return null;
-      const payoutTokens = won ? mine.wagerTokens * 0.99 * 1.9 : 0;
-      const out = { currency: 'SMACK', wagerTokens: mine.wagerTokens, payoutTokens, won, burnTokens: mine.wagerTokens * 0.01 };
+      const payoutTokens = won ? mine.wagerTokens * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout : 0;
+      const out = { currency: 'SMACK', wagerTokens: mine.wagerTokens, payoutTokens, won, burnTokens: mine.wagerTokens * HOUSE_FEES.SMACK.burnBps / 10000, rewardsTokens: mine.wagerTokens * HOUSE_FEES.SMACK.rewardsBps / 10000 };
       try {
         const st = await SAK.SolanaTokenHouse.getState().catch(() => null);
         if (st && st.resolver && st.resolver !== W.address) {
@@ -4608,7 +4617,7 @@
     }
     if (!SAK.SolanaHouse) return null;
     const { bet, nonce, wagerSol } = mine;
-    const outSol = { wagerSol, payout: won ? (wagerSol * 1.9) : 0, won, burnSol: 0 }; // SOL skips the 1% burn
+    const outSol = { wagerSol, payout: won ? (wagerSol * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout) : 0, won, burnSol: 0, buybackSol: wagerSol * HOUSE_FEES.SOL.buybackBps / 10000 }; // SOL skips burn; 1% buyback skim
     try {
       const st = await SAK.SolanaHouse.getHouseState().catch(() => null);
       if (st && st.resolver && st.resolver !== W.address) {
