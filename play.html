@@ -12,7 +12,7 @@
   <!-- Chunky game font (optional – falls back to system fonts offline) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=novault-1" />
+  <link rel="stylesheet" href="css/style.css?v=howto-1" />
 </head>
 <body>
 <div id="app">
@@ -68,6 +68,7 @@
         <button id="btn-enter-ring" class="btn btn-green btn-xl m1-enter">SMACK-A-KOL<small class="btn-sub">Solo vs House · wager SOL</small></button>
         <!-- PVP LOBBY card with pending badge (existing IDs preserved) -->
         <button id="btn-pvp" class="btn btn-red m1-pvp-card">⚔ PVP LOBBY<span id="pvp-btn-badge" class="pvp-btn-badge hidden"></span><small class="btn-sub">Challenge a player · Bo5</small></button>
+        <button id="btn-howto" class="btn btn-blue">❓ HOW TO PLAY<small class="btn-sub">Solo &amp; PvP · Smack Meter tips</small></button>
         <!-- Referral card (existing ID preserved) -->
         <button id="btn-refer" class="btn btn-purple m1-refer">🎁 REFER & EARN<small class="btn-sub">Give 250 PTS · Get 250 PTS</small></button>
         <button id="btn-shop" class="btn btn-yellow">🛒 SHOP / UPGRADES<small class="btn-sub" id="shop-sub">❤ HEALTH · ✊ POWER · 🥊 GLOVES</small></button>
@@ -376,6 +377,53 @@
     </div>
   </div>
 
+  <!-- ================= HOW TO PLAY ================= -->
+  <div id="modal-howto" class="modal hidden">
+    <div class="modal-card howto-card">
+      <h3>❓ HOW TO PLAY</h3>
+      <div class="howto-quick">
+        <b>1.</b> Forge your fighter and lock it.<br>
+        <b>2.</b> Pick Solo vs the House, or challenge a player in the PvP Lobby.<br>
+        <b>3.</b> Tap the Smack Meter when the needle hits the center.
+      </div>
+      <h4>🥊 YOUR FIGHTER</h4>
+      <ol>
+        <li>Forge a fighter with the randomizer, or edit every trait by hand.</li>
+        <li>Lock it to make it yours. Your combo is unique, no one else can have it.</li>
+        <li>First lock is free. You need a wallet connected to lock.</li>
+      </ol>
+      <h4>🏠 SOLO VS THE HOUSE</h4>
+      <ol>
+        <li>Pick a KOL from the wheel, from Contender up to Champion, plus the locked MAX faces.</li>
+        <li>Choose FREE or WAGER, SOL or SMACK, then pick your amount.</li>
+        <li>Best of 5 rounds. Win 3 to take the fight.</li>
+        <li>Wagered wins pay 1.9x on SOL and 2.2x on SMACK. Free fights earn PTS, and 5 straight wagered wins banks a free fight.</li>
+      </ol>
+      <h4>⚔ PVP LOBBY</h4>
+      <ol>
+        <li>Connect your wallet and open the PvP Lobby.</li>
+        <li>Challenge a player who is online, or accept a challenge. Both sides wager the same amount.</li>
+        <li>Best of 5. The challenger attacks the odd rounds.</li>
+        <li>Winner takes the pot minus the 5% fee. If a fight gets stuck, it can be cancelled and both stakes refunded.</li>
+      </ol>
+      <h4>🎯 THE SMACK METER</h4>
+      <p>The needle sweeps with random speed, jumps, and stutters. Tap to freeze it. Closer to the center wins the round. The attacker wins ties.</p>
+      <div class="howto-zones">
+        <div><b class="z-green">● PERFECT</b> within 10° of center, hits hardest</div>
+        <div><b class="z-yellow">● GOOD</b> to 30°, a solid slap</div>
+        <div><b class="z-orange">● WEAK</b> to 56°, a soft slap</div>
+        <div><b class="z-red">● MISS</b> to 90°, a whiff, no damage</div>
+      </div>
+      <div class="howto-tip"><b>TIP:</b> Do not mash or pre-tap. Watch the needle and time your tap for dead center. There is no rhythm to memorize, the speed is random on purpose, so just react. On defense, BRACE and stop your own needle near center to soften the hit. Only a full miss lets you dodge completely.</div>
+      <h4>⭐ PTS, GLOVES &amp; UPGRADES</h4>
+      <p>Earn PTS from fights, wins, daily streaks, achievements, and referrals. Spend them in the Shop on gloves, Wraps up to Diamond, which boost the PTS you win, and on Health and Power upgrades so you hit harder and last longer.</p>
+      <h4>👛 WALLET &amp; WAGERING</h4>
+      <p>Connect with Phantom or Solflare. You need a wallet to wager or lock a fighter.</p>
+      <p class="fine dark">Wagering involves risk. Only wager what you can afford to lose.</p>
+      <button class="btn btn-grey" data-close>CLOSE</button>
+    </div>
+  </div>
+
   <div id="modal-fighter" class="modal hidden">
     <form class="modal-card creator-card" id="fighter-form" autocomplete="off" novalidate>
       <!-- Step 1: create a local account (name) -->
@@ -642,7 +690,7 @@
 <script src="js/pvp-sync.js?v=stuck-1"></script>
 <script src="js/solana-house.js?v=11"></script>
 <script src="js/contracts.js?v=1"></script>
-<script src="js/game-v3.js?v=housev2-2"></script>
+<script src="js/game-v3.js?v=howto-1"></script>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </body>
 </html>

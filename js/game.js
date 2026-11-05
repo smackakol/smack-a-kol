@@ -3484,6 +3484,9 @@
     startFight(res.opponent, pvpWager, { mode: pvpMode, pvp: true });
   }
   $('#btn-pvp').addEventListener('click', () => { A.click(); openPvp(); });
+  // How to Play -> instructions modal (close via [data-close])
+  const btnHowto = $('#btn-howto');
+  if (btnHowto) btnHowto.addEventListener('click', () => { A.click(); $('#modal-howto').classList.remove('hidden'); });
   // SMACK-A-KOL -> the Solo Challenge lobby (its own screen since the restructure)
   const enterRing = $('#btn-enter-ring');
   if (enterRing) enterRing.addEventListener('click', () => { A.unlock(); A.click(); openSolo(); });

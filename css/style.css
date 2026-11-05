@@ -775,6 +775,20 @@ h2, h3, .prompt, .vs, .level, .fc-name, .banner, .float-text, .result-title {
 .bet-chips.light .bet-chip.selected { background: var(--yellow); border-color: var(--ink); }
 .dark-lbl { color: var(--ink); }
 .pvp-card { background: linear-gradient(#ff4fd8, #fff 28%); max-height: 94%; overflow-y: auto; }
+/* How to Play */
+.howto-card { background: linear-gradient(#dbeeff, #fff 30%); max-height: 94%; overflow-y: auto; }
+.howto-card h4 { margin: 8px 0 2px; font-size: 17px; letter-spacing: .5px; }
+.howto-card ol { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
+.howto-card ol li { font-size: 15px; line-height: 1.45; }
+.howto-card p { font-size: 15px; line-height: 1.45; }
+.howto-quick { background: #1a0b3a; color: #fff; border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.6; }
+.howto-quick b { color: #7dffc8; }
+.howto-zones { display: grid; gap: 2px; font-size: 15px; line-height: 1.45; }
+.howto-zones .z-green { color: #1d9e4b; }
+.howto-zones .z-yellow { color: #b58900; }
+.howto-zones .z-orange { color: #e07b00; }
+.howto-zones .z-red { color: #d21f3c; }
+.howto-tip { background: #fff7d6; border: 2px solid #ffd23f; border-radius: 12px; padding: 10px 12px; font-size: 15px; line-height: 1.45; }
 .pvp-head { display: flex; justify-content: space-between; font-size: 14px; margin-top: 4px; }
 /* Wager section cards — one glance per section */
 .pvp-card { border-radius: 18px; padding: 14px 12px; margin: 14px 0; border: 2px solid; }
