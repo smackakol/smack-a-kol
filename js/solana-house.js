@@ -358,10 +358,16 @@
    *  carry both this and set_house_config (see saveHouseConfig). */
   function buildSetRewardsIx(house, rewards, adminAddr, poolAddr, buybackAddr, rewardsBps, buybackBps, devAddr, devBps) {
     const w = web3();
+    // Arg order MUST match the program (pool, buyback, rewardsBps,
+    // buybackBps, dev, devBps). The dev pubkey goes AFTER the two
+    // rewards/buyback rates, not before them: putting it first made the
+    // program read the dev wallet's key bytes as the rates (21082/44832
+    // for 75aK) and fail with BadConfig 0x1770.
     const data = concat(new Uint8Array(DISC.set_rewards_config),
       new w.PublicKey(poolAddr).toBuffer(), new w.PublicKey(buybackAddr).toBuffer(),
+      u16(rewardsBps), u16(buybackBps),
       new w.PublicKey(devAddr).toBuffer(),
-      u16(rewardsBps), u16(buybackBps), u16(devBps));
+      u16(devBps));
     return new w.TransactionInstruction({
       programId: new w.PublicKey(PROGRAM_ID),
       keys: [
@@ -801,10 +807,16 @@
 
   function buildSetRewardsIx(house, rewards, adminAddr, poolAddr, buybackAddr, rewardsBps, buybackBps, devAddr, devBps) {
     const w = web3();
+    // Arg order MUST match the program (pool, buyback, rewardsBps,
+    // buybackBps, dev, devBps). The dev pubkey goes AFTER the two
+    // rewards/buyback rates, not before them: putting it first made the
+    // program read the dev wallet's key bytes as the rates (21082/44832
+    // for 75aK) and fail with BadConfig 0x1770.
     const data = concat(new Uint8Array(DISC.set_rewards_config),
       new w.PublicKey(poolAddr).toBuffer(), new w.PublicKey(buybackAddr).toBuffer(),
+      u16(rewardsBps), u16(buybackBps),
       new w.PublicKey(devAddr).toBuffer(),
-      u16(rewardsBps), u16(buybackBps), u16(devBps));
+      u16(devBps));
     return new w.TransactionInstruction({
       programId: new w.PublicKey(PROGRAM_ID),
       keys: [
