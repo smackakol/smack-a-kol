@@ -149,6 +149,11 @@
         { pubkey: betVault, isSigner: false, isWritable: true },
         { pubkey: new w.PublicKey(resolverAddr), isSigner: true, isWritable: false },
         { pubkey: playerPk, isSigner: false, isWritable: true },
+        // v2 ResolveBet has 9 accounts: player_token_account is 7th. For
+        // SOL pass the player pubkey as a placeholder; the program only
+        // touches that account in SPL mode. Omitting it failed every SOL
+        // settle with 0xbbd (AccountNotEnoughKeys) after the v2 upgrade.
+        { pubkey: playerPk, isSigner: false, isWritable: true },
         { pubkey: new w.PublicKey(TOKEN_PROGRAM), isSigner: false, isWritable: false },
         { pubkey: w.SystemProgram.programId, isSigner: false, isWritable: false },
       ],
