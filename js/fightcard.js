@@ -212,7 +212,10 @@ SAK.FightCard = (() => {
       }
       wg.lines.forEach(([l, v, tone]) => {
         const col = tone === 'win' ? '#39ff88' : tone === 'neg' ? '#ff3b5c' : '#ffffff';
-        p += `<text x="${PX + PAD}" y="${py + 38}" font-size="38" font-weight="400" fill="#ffffff">${esc(l)}</text>`;
+        // Win/loss lines stand out at 46px like MATCH PTS; other rows stay 38px.
+        const big = tone === 'win' || tone === 'neg';
+        const fs = big ? 46 : 38, lh = big ? 64 : 54, ly = py + (big ? 44 : 38);
+        p += `<text x="${PX + PAD}" y="${ly}" font-size="${fs}" font-weight="${big ? 700 : 400}" fill="#ffffff">${esc(l)}</text>`;
         // Parenthetical notes (e.g. SOL skips burn) render smaller + muted,
         // like the screen's <small> treatment, instead of full-size.
         const m = String(v).match(/^(.*) \((.*)\)$/);
@@ -220,12 +223,12 @@ SAK.FightCard = (() => {
           const note = '(' + m[2] + ')';
           const noteX = W - M - PAD;
           const mainX = noteX - estW(note, 26) - 12;
-          p += `<text x="${mainX}" y="${py + 38}" text-anchor="end" font-size="38" font-weight="700" fill="${col}">${esc(m[1])}</text>`;
-          p += `<text x="${noteX}" y="${py + 38}" text-anchor="end" font-size="26" font-weight="400" fill="#ffffff" opacity="0.55">${esc(note)}</text>`;
+          p += `<text x="${mainX}" y="${ly}" text-anchor="end" font-size="${fs}" font-weight="700" fill="${col}">${esc(m[1])}</text>`;
+          p += `<text x="${noteX}" y="${ly}" text-anchor="end" font-size="26" font-weight="400" fill="#ffffff" opacity="0.55">${esc(note)}</text>`;
         } else {
-          p += `<text x="${W - M - PAD}" y="${py + 38}" text-anchor="end" font-size="38" font-weight="700" fill="${col}">${esc(v)}</text>`;
+          p += `<text x="${W - M - PAD}" y="${ly}" text-anchor="end" font-size="${fs}" font-weight="700" fill="${col}">${esc(v)}</text>`;
         }
-        py += 54;
+        py += lh;
       });
       if (wg.fine) {
         const lines = wrapLines(wg.fine, 62, 2);

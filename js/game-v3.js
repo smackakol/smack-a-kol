@@ -2418,7 +2418,7 @@
           const val = SAK.StreakRewards.fmtValue(c.currency, c.value);
           if (win) return `<div class="bd-head" style="margin-top:8px;">🎁 FREE FIGHT (DEVNET)</div>
             <div><span>Free fight value</span><b>${val}</b></div>
-            <div><span>You won</span><b style="color:#4ade80;">+${SAK.StreakRewards.fmtValue(c.currency, SAK.StreakRewards.payoutFor(c))}</b></div>
+            <div style="font-size:22px;font-weight:800;color:#2ee66b;"><span>YOU WON</span><b>+${SAK.StreakRewards.fmtValue(c.currency, SAK.StreakRewards.payoutFor(c))}</b></div>
             <div class="fine" style="font-size:11px;color:#888;">⏳ The house pays this automatically — no wallet step needed</div>`;
           if (!draw) return `<div class="bd-head" style="margin-top:8px;">🎁 FREE FIGHT (DEVNET)</div>
             <div><span>Free fight value</span><b>${val}</b></div>
@@ -2432,13 +2432,13 @@
             const payout = (w * 2 * (1 - fee)).toFixed(3);
             return `<div class="bd-head" style="margin-top:8px;">⛓ ON-CHAIN WAGER (DEVNET)</div>
               <div><span>Wagered</span><b>${w} SOL</b></div>
-              <div><span>You won</span><b style="color:#4ade80;">+${payout} SOL</b></div>
+              <div style="font-size:22px;font-weight:800;color:#2ee66b;"><span>YOU WON</span><b>+${payout} SOL</b></div>
               <div class="fine" style="font-size:11px;color:#888;">5% fee · resolver settles</div>
               <button id="chain-settle-btn" style="display:block;width:100%;padding:12px;margin-top:8px;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;background:linear-gradient(180deg,#f5c542,#d4a017);color:#000;">💰 SETTLE & CLAIM</button>`;
           } else if (!draw) {
             return `<div class="bd-head" style="margin-top:8px;">⛓ ON-CHAIN WAGER (DEVNET)</div>
               <div><span>Wagered</span><b>${w} SOL</b></div>
-              <div><span>You lost</span><b class="neg">-${w} SOL</b></div>`;
+              <div style="font-size:22px;font-weight:800;color:#ff3b5c;"><span>YOU LOST</span><b>-${w} SOL</b></div>`;
           }
           return '';
         })() : ''}
@@ -2447,40 +2447,35 @@
           if (F.opts.soloHouse.currency === 'SMACK') {
             const wT = F.opts.soloHouse.wagerTokens || 0;
             const burnLine = `<div><span>Burn (${HOUSE_FEES.SMACK.burnBps / 100}%)</span><b>-${fmtTokAmt(wT * HOUSE_FEES.SMACK.burnBps / 10000)} Token 🔥</b></div><div><span>Rewards pool (${HOUSE_FEES.SMACK.rewardsBps / 100}%)</span><b>-${fmtTokAmt(wT * HOUSE_FEES.SMACK.rewardsBps / 10000)} Token 🏆</b></div>`;
-            if (r && r.won) {
-              return `<div class="bd-head" style="margin-top:8px;"><img class="smack-hand" src="assets/hand-icon-sm.png" alt=""> SOLO VS Token HOUSE (DEVNET)</div>
-                <div><span>Wagered</span><b>${fmtTokAmt(wT)} Token</b></div>
-                ${burnLine}
-                <div><span>You won</span><b style="color:#4ade80;">+${fmtTokAmt(r.payoutTokens || 0)} Token</b></div>`;
-            } else if (r && !r.won) {
-              return `<div class="bd-head" style="margin-top:8px;"><img class="smack-hand" src="assets/hand-icon-sm.png" alt=""> SOLO VS Token HOUSE (DEVNET)</div>
-                <div><span>Wagered</span><b>${fmtTokAmt(wT)} Token</b></div>
-                ${burnLine}
-                <div><span>You lost</span><b class="neg">-${fmtTokAmt(wT)} Token</b></div>`;
-            }
+            // The payout is deterministic (wager x net x payout) and the
+            // settlement lands automatically, so show it now instead of
+            // waiting for the async soloResult, which arrives after this
+            // card renders and never re-renders it. Prefer the settled
+            // amount when it is already known.
+            const winAmt = r ? fmtTokAmt(r.payoutTokens || 0) : fmtTokAmt(wT * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout);
+            const hero = win
+              ? `<div style="font-size:22px;font-weight:800;color:#2ee66b;"><span>YOU WON</span><b>+${winAmt} Token</b></div>`
+              : `<div style="font-size:22px;font-weight:800;color:#ff3b5c;"><span>YOU LOST</span><b>−${fmtTokAmt(wT)} Token</b></div>`;
+            const fine = r ? '' : `<div class="fine" style="font-size:11px;color:#888;">⏳ The house settles this automatically — no wallet step needed</div>`;
             return `<div class="bd-head" style="margin-top:8px;"><img class="smack-hand" src="assets/hand-icon-sm.png" alt=""> SOLO VS Token HOUSE (DEVNET)</div>
-              <div><span>Wagered</span><b>${fmtTokAmt(wT)} Token</b></div>
-              ${burnLine}
-              <div class="fine" style="font-size:11px;color:#888;">⏳ The house settles this automatically — no wallet step needed</div>`;
+                <div><span>Wagered</span><b>${fmtTokAmt(wT)} Token</b></div>
+                ${burnLine}
+                ${hero}
+                ${fine}`;
           }
           const w = parseFloat(F.opts.soloHouse.wagerSol || 0);
           // SOL skips the burn — 1% of a SOL wager is skimmed to buy Token for the rewards pool
           const burnLine = `<div><span>Buyback (${HOUSE_FEES.SOL.buybackBps / 100}%)</span><b>-${Math.round(w * HOUSE_FEES.SOL.buybackBps / 10000 * 1000) / 1000} SOL <small style="color:#666;">(buys Token for the rewards pool)</small></b></div>`;
-          if (r && r.won) {
-            return `<div class="bd-head" style="margin-top:8px;">🏠 SOLO VS HOUSE (DEVNET)</div>
-              <div><span>Wagered</span><b>${w} SOL</b></div>
-              ${burnLine}
-              <div><span>You won</span><b style="color:#4ade80;">+${r.payout.toFixed(3)} SOL</b></div>`;
-          } else if (r && !r.won) {
-            return `<div class="bd-head" style="margin-top:8px;">🏠 SOLO VS HOUSE (DEVNET)</div>
-              <div><span>Wagered</span><b>${w} SOL</b></div>
-              ${burnLine}
-              <div><span>You lost</span><b class="neg">-${w} SOL</b></div>`;
-          }
+          const winAmtSol = r ? r.payout.toFixed(3) : (w * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout).toFixed(3);
+          const heroSol = win
+            ? `<div style="font-size:22px;font-weight:800;color:#2ee66b;"><span>YOU WON</span><b>+${winAmtSol} SOL</b></div>`
+            : `<div style="font-size:22px;font-weight:800;color:#ff3b5c;"><span>YOU LOST</span><b>−${w} SOL</b></div>`;
+          const fineSol = r ? '' : `<div class="fine" style="font-size:11px;color:#888;">⏳ The house settles this automatically — no wallet step needed</div>`;
           return `<div class="bd-head" style="margin-top:8px;">🏠 SOLO VS HOUSE (DEVNET)</div>
             <div><span>Wagered</span><b>${w} SOL</b></div>
             ${burnLine}
-            <div class="fine" style="font-size:11px;color:#888;">⏳ The house settles this automatically — no wallet step needed</div>`;
+            ${heroSol}
+            ${fineSol}`;
         })() : ''}
       </div>`;
     if (resTip) html += `<p class="fine">${resTip}</p>`;
@@ -2608,16 +2603,18 @@
           const wT = sh.wagerTokens || 0;
           wager = { head: 'SOLO VS Token HOUSE (DEVNET)', hand: true,
             lines: [['Wagered', fmtTokAmt(wT) + ' Token'], ['Burn (' + (HOUSE_FEES.SMACK.burnBps / 100) + '%)', '−' + fmtTokAmt(wT * HOUSE_FEES.SMACK.burnBps / 10000) + ' Token 🔥'], ['Rewards pool (' + (HOUSE_FEES.SMACK.rewardsBps / 100) + '%)', '−' + fmtTokAmt(wT * HOUSE_FEES.SMACK.rewardsBps / 10000) + ' Token 🏆']], fine: null };
-          if (r && r.won) wager.lines.push(['You won', '+' + fmtTokAmt(r.payoutTokens || 0) + ' Token', 'win']);
-          else if (r && !r.won) wager.lines.push(['You lost', '−' + fmtTokAmt(wT) + ' Token', 'neg']);
-          else wager.fine = '⏳ The house settles this automatically — no wallet step needed';
+          // Same as the screen: the payout is deterministic, so show it now
+          // instead of waiting for the async soloResult.
+          if (win) wager.lines.push(['You won', '+' + (r ? fmtTokAmt(r.payoutTokens || 0) : fmtTokAmt(wT * HOUSE_FEES.SMACK.net * HOUSE_FEES.SMACK.payout)) + ' Token', 'win']);
+          else wager.lines.push(['You lost', '−' + fmtTokAmt(wT) + ' Token', 'neg']);
+          if (!r) wager.fine = '⏳ The house settles this automatically — no wallet step needed';
         } else {
           const w = parseFloat(sh.wagerSol || 0);
           wager = { head: '🏠 SOLO VS HOUSE (DEVNET)',
             lines: [['Wagered', w + ' SOL'], ['Buyback (' + (HOUSE_FEES.SOL.buybackBps / 100) + '%)', '−' + (Math.round(w * HOUSE_FEES.SOL.buybackBps / 10000 * 1000) / 1000) + ' SOL']], fine: null };
-          if (r && r.won) wager.lines.push(['You won', '+' + r.payout.toFixed(3) + ' SOL', 'win']);
-          else if (r && !r.won) wager.lines.push(['You lost', '−' + w + ' SOL', 'neg']);
-          else wager.fine = '⏳ The house settles this automatically — no wallet step needed';
+          if (win) wager.lines.push(['You won', '+' + (r ? r.payout.toFixed(3) : (w * HOUSE_FEES.SOL.net * HOUSE_FEES.SOL.payout).toFixed(3)) + ' SOL', 'win']);
+          else wager.lines.push(['You lost', '−' + w + ' SOL', 'neg']);
+          if (!r) wager.fine = '⏳ The house settles this automatically — no wallet step needed';
         }
       } else if (F.opts && F.opts.chainChallenge) {
         const w = parseFloat(F.opts.chainWagerSol || 0);
