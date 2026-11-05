@@ -9,12 +9,20 @@
     place_bet: [222, 62, 67, 220, 63, 166, 126, 33],
     resolve_bet: [137, 132, 33, 97, 48, 208, 30, 159],
     set_resolver: [137, 108, 27, 51, 202, 16, 33, 119],
+    set_house_config: [221, 12, 204, 232, 87, 127, 99, 83],
+    set_rewards_config: [113, 29, 223, 218, 217, 111, 85, 139],
   };
+  // Rewards defaults (devnet): pool wallet created 2026-11-04, buyback
+  // wallet created 2026-11-04 (bot-held keypair on the VM, devnet only).
+  // Overridden by the on-chain rewards config once the admin sets it.
+  const REWARDS_POOL_FALLBACK = 'FnNeJvbEZVHDHfPbTK5Uxnu1ipovoLbkz9u7kcnkWXD9';
+  const BUYBACK_FALLBACK = 'J7pWVoJYGZPqjzeSv8NQ2nY5GKSos4XXbH4om9ahbXBd';
 
   function web3() { return window.solanaWeb3; }
   function connection() { return new (web3().Connection)(RPC_URL, 'confirmed'); }
   function te() { return new TextEncoder(); }
   function u64(n) { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n), true); return b; }
+  function u16(n) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
   function concat(...arrs) {
     const t = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0));
     let o = 0; for (const a of arrs) { t.set(a, o); o += a.length; }
@@ -57,6 +65,34 @@
     return sig;
   }
 
+  /** Rewards config PDA (seeds ['rewards']) + live read. Uninitialized
+   *  (admin hasn't run set_rewards_config yet) => initialized:false and
+   *  the bet code falls back to the devnet pool/buyback wallets, with
+   *  zero rates on-chain so both slots are ignored by the program. */
+  async function deriveRewardsPDA() {
+    const w = web3();
+    const programId = new w.PublicKey(PROGRAM_ID);
+    const [rewards] = await w.PublicKey.findProgramAddress([te().encode('rewards')], programId);
+    return rewards;
+  }
+  async function getRewardsState() {
+    const w = web3();
+    const conn = connection();
+    const rewards = await deriveRewardsPDA();
+    const info = await conn.getAccountInfo(rewards);
+    if (!info || !info.data || info.data.length < 77) {
+      return { initialized: false, rewardsAddress: rewards.toBase58(), rewardsPool: REWARDS_POOL_FALLBACK, buybackWallet: BUYBACK_FALLBACK, rewardsBps: 0, buybackBps: 0 };
+    }
+    const d = info.data;
+    const dv = new DataView(d.buffer, d.byteOffset || 0, d.byteLength);
+    return {
+      initialized: true, rewardsAddress: rewards.toBase58(),
+      rewardsPool: new w.PublicKey(d.slice(8, 40)).toBase58(),
+      buybackWallet: new w.PublicKey(d.slice(40, 72)).toBase58(),
+      rewardsBps: dv.getUint16(72, true), buybackBps: dv.getUint16(74, true),
+    };
+  }
+
   /** Place a SOL bet vs the house. Returns { signature, bet, nonce }. */
   async function placeBet(lamports) {
     const w = web3();
@@ -64,6 +100,12 @@
     const playerPk = new w.PublicKey(address);
     const nonce = Date.now();
     const { house, vault, bet, betVault } = await derivePDAs(playerPk, nonce);
+    const rewards = await deriveRewardsPDA();
+    // Fail closed: a failed config read must abort the bet, never bet
+    // with guessed addresses — the program skims to the PASSED buyback
+    // wallet, so a stale fallback could misdirect the 1%. A missing or
+    // short PDA is fine (rates are 0, both slots ignored).
+    const rw = await getRewardsState();
     const NATIVE_MINT = w.PublicKey.default;
     const data = concat(new Uint8Array(DISC.place_bet), u64(nonce), u64(lamports));
     const ix = new w.TransactionInstruction({
@@ -76,6 +118,9 @@
         { pubkey: playerPk, isSigner: true, isWritable: true },
         { pubkey: playerPk, isSigner: false, isWritable: false },
         { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+        { pubkey: rewards, isSigner: false, isWritable: false },
+        { pubkey: new w.PublicKey(rw.rewardsPool), isSigner: false, isWritable: true },
+        { pubkey: new w.PublicKey(rw.buybackWallet), isSigner: false, isWritable: true },
         { pubkey: new w.PublicKey(TOKEN_PROGRAM), isSigner: false, isWritable: false },
         { pubkey: w.SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -286,7 +331,76 @@
     return { signature };
   }
 
-  window.SAK.SolanaHouse = { PROGRAM_ID, RPC_URL, placeBet, resolveBet, resolveAllLoss, setResolver, derivePDAs, getHouseState, getOpenBetsSummary, getOpenBets, getVaultActivity };
+  /** Admin only: write the house config (win rate, payout, risk cap,
+   *  burn). The connected wallet must be the house admin. */
+  async function setHouseConfig(winBps, payoutBps, maxBetBps, burnBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const [house] = await w.PublicKey.findProgramAddress([te().encode('house')], new w.PublicKey(PROGRAM_ID));
+    const data = concat(new Uint8Array(DISC.set_house_config), u16(winBps), u64(payoutBps), u16(maxBetBps), u16(burnBps));
+    const ix = new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [
+        { pubkey: house, isSigner: false, isWritable: true },
+        { pubkey: new w.PublicKey(address), isSigner: true, isWritable: false },
+      ],
+      data,
+    });
+    const signature = await buildAndSend([ix], address);
+    return { signature };
+  }
+
+  /** Admin only: create or update the rewards config (pool wallet,
+   *  buyback wallet, SPL rewards rate, SOL buyback rate). One tx can
+   *  carry both this and set_house_config (see saveHouseConfig). */
+  function buildSetRewardsIx(house, rewards, adminAddr, poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const data = concat(new Uint8Array(DISC.set_rewards_config),
+      new w.PublicKey(poolAddr).toBuffer(), new w.PublicKey(buybackAddr).toBuffer(),
+      u16(rewardsBps), u16(buybackBps));
+    return new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [
+        { pubkey: house, isSigner: false, isWritable: false },
+        { pubkey: rewards, isSigner: false, isWritable: true },
+        { pubkey: new w.PublicKey(adminAddr), isSigner: true, isWritable: true },
+        { pubkey: w.SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+  }
+  async function setRewardsConfig(poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const [house] = await w.PublicKey.findProgramAddress([te().encode('house')], new w.PublicKey(PROGRAM_ID));
+    const rewards = await deriveRewardsPDA();
+    const ix = buildSetRewardsIx(house, rewards, address, poolAddr, buybackAddr, rewardsBps, buybackBps);
+    const signature = await buildAndSend([ix], address);
+    return { signature };
+  }
+
+  /** Admin only: house config + rewards config in ONE transaction, one
+   *  wallet signature. The panel's save button calls this. */
+  async function saveHouseConfig(winBps, payoutBps, maxBetBps, burnBps, poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const [house] = await w.PublicKey.findProgramAddress([te().encode('house')], new w.PublicKey(PROGRAM_ID));
+    const rewards = await deriveRewardsPDA();
+    const dataH = concat(new Uint8Array(DISC.set_house_config), u16(winBps), u64(payoutBps), u16(maxBetBps), u16(burnBps));
+    const ixH = new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [
+        { pubkey: house, isSigner: false, isWritable: true },
+        { pubkey: new w.PublicKey(address), isSigner: true, isWritable: false },
+      ],
+      data: dataH,
+    });
+    const ixR = buildSetRewardsIx(house, rewards, address, poolAddr, buybackAddr, rewardsBps, buybackBps);
+    const signature = await buildAndSend([ixH, ixR], address);
+    return { signature };
+  }
+
+  window.SAK.SolanaHouse = { PROGRAM_ID, RPC_URL, placeBet, resolveBet, resolveAllLoss, setResolver, derivePDAs, getHouseState, getOpenBetsSummary, getOpenBets, getVaultActivity, deriveRewardsPDA, getRewardsState, setHouseConfig, setRewardsConfig, saveHouseConfig };
   // The house operations wallet that runs the settlement service. Once a
   // house's resolver points here, the service settles every player's bet
   // server-side and players never sign a settle transaction.
@@ -314,7 +428,13 @@
     place_bet: [222, 62, 67, 220, 63, 166, 126, 33],
     resolve_bet: [137, 132, 33, 97, 48, 208, 30, 159],
     set_resolver: [137, 108, 27, 51, 202, 16, 33, 119],
+    set_house_config: [221, 12, 204, 232, 87, 127, 99, 83],
+    set_rewards_config: [113, 29, 223, 218, 217, 111, 85, 139],
   };
+  // Same devnet rewards defaults as the SOL module. Overridden by the
+  // on-chain rewards config once the admin sets it.
+  const REWARDS_POOL_FALLBACK = 'FnNeJvbEZVHDHfPbTK5Uxnu1ipovoLbkz9u7kcnkWXD9';
+  const BUYBACK_FALLBACK = 'J7pWVoJYGZPqjzeSv8NQ2nY5GKSos4XXbH4om9ahbXBd';
 
   function web3() { return window.solanaWeb3; }
   function connection() { return new (web3().Connection)(RPC_URL, 'confirmed'); }
@@ -347,6 +467,33 @@
       [ownerPk.toBuffer(), new w.PublicKey(TOKEN_PROGRAM).toBuffer(), new w.PublicKey(MINT).toBuffer()],
       new w.PublicKey(ATA_PROGRAM));
     return ata;
+  }
+
+  /** Rewards config PDA + live read (same shape as the SOL module).
+   *  Uninitialized => initialized:false with the devnet fallbacks and
+   *  zero rates (both slots ignored by the program). */
+  async function deriveRewardsPDA() {
+    const w = web3();
+    const programId = new w.PublicKey(PROGRAM_ID);
+    const [rewards] = await w.PublicKey.findProgramAddress([te().encode('rewards')], programId);
+    return rewards;
+  }
+  async function getRewardsState() {
+    const w = web3();
+    const conn = connection();
+    const rewards = await deriveRewardsPDA();
+    const info = await conn.getAccountInfo(rewards);
+    if (!info || !info.data || info.data.length < 77) {
+      return { initialized: false, rewardsAddress: rewards.toBase58(), rewardsPool: REWARDS_POOL_FALLBACK, buybackWallet: BUYBACK_FALLBACK, rewardsBps: 0, buybackBps: 0 };
+    }
+    const d = info.data;
+    const dv = new DataView(d.buffer, d.byteOffset || 0, d.byteLength);
+    return {
+      initialized: true, rewardsAddress: rewards.toBase58(),
+      rewardsPool: new w.PublicKey(d.slice(8, 40)).toBase58(),
+      buybackWallet: new w.PublicKey(d.slice(40, 72)).toBase58(),
+      rewardsBps: dv.getUint16(72, true), buybackBps: dv.getUint16(74, true),
+    };
   }
 
   function getSigner() {
@@ -444,6 +591,12 @@
     const nonce = Date.now();
     const { house, vault, bet, betVault } = await derivePDAs(playerPk, nonce);
     const ata = await getAta(playerPk);
+    const rewards = await deriveRewardsPDA();
+    // Fail closed on a config-read error (see SOL placeBet): the program
+    // pays rewards to the PASSED pool ATA, so a guessed address could
+    // misdirect the 0.75%. Missing/short PDA is fine (rates are 0).
+    const rw = await getRewardsState();
+    const poolAta = await getAta(new w.PublicKey(rw.rewardsPool));
     const ixs = [];
     const conn = connection();
     if (!(await conn.getAccountInfo(ata))) {
@@ -463,6 +616,7 @@
       keys: [
         K(house, false, false), K(vault, false, false), K(bet, false, true), K(betVault, false, true),
         K(playerPk, true, true), K(ata, false, true), K(new w.PublicKey(MINT), false, true),
+        K(rewards, false, false), K(poolAta, false, true), K(new w.PublicKey(rw.buybackWallet), false, true),
         K(new w.PublicKey(TOKEN_PROGRAM), false, false), K(w.SystemProgram.programId, false, false),
       ],
       data,
@@ -621,5 +775,98 @@
     return { signature };
   }
 
-  window.SAK.SolanaTokenHouse = { PROGRAM_ID, MINT, DECIMALS, RPC_URL, getState, getTokenBalance, getAta, initialize, placeBet, resolveBet, resolveAllLoss, setResolver, getOpenBets, getOpenBetsSummary, getVaultActivity, derivePDAs };
+  /** Admin only: write the token house config (win rate, payout, risk
+   *  cap, burn). The connected wallet must be the house admin. */
+  async function setHouseConfig(winBps, payoutBps, maxBetBps, burnBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const { house } = await derivePDAs();
+    const data = concat(new Uint8Array(DISC.set_house_config), u16(winBps), u64(payoutBps), u16(maxBetBps), u16(burnBps));
+    const ix = new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [K(house, false, true), K(new w.PublicKey(address), true, false)],
+      data,
+    });
+    const signature = await buildAndSend([ix], address);
+    return { signature };
+  }
+
+  function buildSetRewardsIx(house, rewards, adminAddr, poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const data = concat(new Uint8Array(DISC.set_rewards_config),
+      new w.PublicKey(poolAddr).toBuffer(), new w.PublicKey(buybackAddr).toBuffer(),
+      u16(rewardsBps), u16(buybackBps));
+    return new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [
+        K(house, false, false), K(rewards, false, true),
+        K(new w.PublicKey(adminAddr), true, true), K(w.SystemProgram.programId, false, false),
+      ],
+      data,
+    });
+  }
+  async function setRewardsConfig(poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const { house } = await derivePDAs();
+    const rewards = await deriveRewardsPDA();
+    const ix = buildSetRewardsIx(house, rewards, address, poolAddr, buybackAddr, rewardsBps, buybackBps);
+    const signature = await buildAndSend([ix], address);
+    return { signature };
+  }
+
+  /** Create the rewards pool's token account if it doesn't exist yet
+   *  (permissionless: anyone can create an ATA for any wallet; the
+   *  caller pays the ~0.002 SOL rent). The panel's rewards section
+   *  calls this so SPL rewards never fail on a missing pool ATA. */
+  async function ensurePoolAta(poolWalletAddr) {
+    const w = web3();
+    const { address } = getSigner();
+    const payer = new w.PublicKey(address);
+    const ata = await getAta(new w.PublicKey(poolWalletAddr));
+    const conn = connection();
+    if (await conn.getAccountInfo(ata)) return { created: false, ata: ata.toBase58() };
+    const ix = new w.TransactionInstruction({
+      programId: new w.PublicKey(ATA_PROGRAM),
+      keys: [
+        K(payer, true, true), K(ata, false, true), K(new w.PublicKey(poolWalletAddr), false, false),
+        K(new w.PublicKey(MINT), false, false), K(w.SystemProgram.programId, false, false),
+        K(new w.PublicKey(TOKEN_PROGRAM), false, false),
+      ],
+      data: new Uint8Array(0),
+    });
+    const signature = await buildAndSend([ix], address);
+    return { created: true, ata: ata.toBase58(), signature };
+  }
+
+  /** Read-only: does the rewards pool's token account exist yet?
+   *  The panel's rewards section shows this so the admin creates the
+   *  ATA before SPL rewards go live (a missing ATA fails SPL bets). */
+  async function poolAtaStatus(poolWalletAddr) {
+    const w = web3();
+    const conn = connection();
+    const ata = await getAta(new w.PublicKey(poolWalletAddr));
+    const info = await conn.getAccountInfo(ata);
+    return { ata: ata.toBase58(), exists: !!(info && info.data && info.data.length >= 72) };
+  }
+
+  /** Admin only: token house config + rewards config in ONE transaction,
+   *  one wallet signature. The panel's save button calls this. */
+  async function saveHouseConfig(winBps, payoutBps, maxBetBps, burnBps, poolAddr, buybackAddr, rewardsBps, buybackBps) {
+    const w = web3();
+    const { address } = getSigner();
+    const { house } = await derivePDAs();
+    const rewards = await deriveRewardsPDA();
+    const dataH = concat(new Uint8Array(DISC.set_house_config), u16(winBps), u64(payoutBps), u16(maxBetBps), u16(burnBps));
+    const ixH = new w.TransactionInstruction({
+      programId: new w.PublicKey(PROGRAM_ID),
+      keys: [K(house, false, true), K(new w.PublicKey(address), true, false)],
+      data: dataH,
+    });
+    const ixR = buildSetRewardsIx(house, rewards, address, poolAddr, buybackAddr, rewardsBps, buybackBps);
+    const signature = await buildAndSend([ixH, ixR], address);
+    return { signature };
+  }
+
+  window.SAK.SolanaTokenHouse = { PROGRAM_ID, MINT, DECIMALS, RPC_URL, getState, getTokenBalance, getAta, initialize, placeBet, resolveBet, resolveAllLoss, setResolver, getOpenBets, getOpenBetsSummary, getVaultActivity, derivePDAs, deriveRewardsPDA, getRewardsState, setHouseConfig, setRewardsConfig, saveHouseConfig, ensurePoolAta, poolAtaStatus };
 })();

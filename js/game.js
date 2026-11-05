@@ -5129,6 +5129,8 @@
   const HOUSE_TUNABLES = [
     ['house_win_bps', 'Player win rate', 'basis points'],
     ['house_payout_bps', 'Win payout', 'basis points'],
+    ['house_max_bps', 'Risk cap', 'basis points'],
+    ['house_burn_bps', 'Burn rate', 'basis points'],
   ];
   /* --- vault tracker (admin): live house vault + gameplay stats -------- */
   async function refreshAdminVault() {
@@ -5141,6 +5143,15 @@
     try {
       const H = SAK.SolanaHouse;
       const st = await H.getHouseState();
+      // Sync the HOUSE ODDS inputs from the live on-chain values, so the
+      // panel never offers a stale number as if it were current.
+      const setHouseInp = (k, v) => { const i = document.querySelector('#admin-house [data-cfg="' + k + '"]'); if (i) i.value = v; };
+      setHouseInp('house_win_bps', st.winBps);
+      setHouseInp('house_payout_bps', st.payoutBps);
+      setHouseInp('house_max_bps', st.maxBetBps);
+      setHouseInp('house_burn_bps', st.burnBps);
+      const ah = document.getElementById('admin-house');
+      if (ah) ah.dispatchEvent(new Event('input', { bubbles: true }));
       let html =
         `<div class="vt-hero"><span class="vt-hero-label">VAULT BALANCE</span>` +
         `<span class="vt-hero-val">◎ ${fmtSol(st.vaultLamports)} <small>SOL</small></span>` +
@@ -5518,6 +5529,15 @@
         `<div><b>${(st.maxBetBps / 100).toFixed(0)}%</b><small>RISK CAP</small></div>` +
         `<div><b>${(st.burnBps / 100).toFixed(0)}%</b><small>BURN</small></div></div>` +
         row('Admin', short(st.admin)) + row('Resolver', short(st.resolver));
+      // SMACK house odds, editable + saved on-chain (prefilled live, so a
+      // stale number never poses as current). 2.2x lives here: set Win
+      // payout to 22000 and save.
+      html += `<div class="vt-sub">HOUSE ODDS (SMACK)</div>` +
+        `<div class="tunable"><label>Player win rate<small>basis points</small></label><input data-th-cfg="th_win_bps" type="number" step="any" value="${st.winBps}" /></div>` +
+        `<div class="tunable"><label>Win payout<small>basis points (22000 = 2.2x)</small></label><input data-th-cfg="th_payout_bps" type="number" step="any" value="${st.payoutBps}" /></div>` +
+        `<div class="tunable"><label>Risk cap<small>basis points</small></label><input data-th-cfg="th_max_bps" type="number" step="any" value="${st.maxBetBps}" /></div>` +
+        `<div class="tunable"><label>Burn rate<small>basis points (25 = 0.25%)</small></label><input data-th-cfg="th_burn_bps" type="number" step="any" value="${st.burnBps}" /></div>` +
+        `<button class="btn btn-gold" id="th-save" style="width:100%;margin:6px 0;">💾 SAVE SMACK HOUSE ODDS</button>`;
       // Settlement service: who is allowed to sign resolve_bet right now.
       const svcWT = SAK.SETTLEMENT_SERVICE_WALLET;
       const svcOnT = !!svcWT && st.resolver === svcWT;
@@ -5573,6 +5593,23 @@
       html += row('Vault address', `<code>${short(st.vaultAddress)}</code>`) +
         `<div class="vt-foot">Last checked ${new Date().toLocaleTimeString()} · devnet</div>`;
       el.innerHTML = html;
+      const thSave = $('#th-save');
+      if (thSave) thSave.onclick = async () => {
+        const v = k => +((el.querySelector('[data-th-cfg="' + k + '"]') || {}).value || 0);
+        const win = v('th_win_bps'), pay = v('th_payout_bps'), max = v('th_max_bps'), burn = v('th_burn_bps');
+        if (![win, pay, max, burn].every(Number.isFinite) || !(win > 0 && pay >= 10000 && max > 0 && burn >= 0)) {
+          toast('⚠️ Those numbers look off — tap REFRESH SMACK HOUSE and try again', 3000); return;
+        }
+        thSave.disabled = true; thSave.textContent = 'APPROVE IN WALLET…';
+        try {
+          await TH.setHouseConfig(win, pay, max, burn);
+          toast('✅ SMACK house odds saved', 3000);
+        } catch (e) {
+          const m = String((e && e.message) || '');
+          toast(/reject|denied|cancel/i.test(m) ? 'Save cancelled in wallet' : '⚠️ SMACK save failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
+        }
+        refreshAdminTokenHouse();
+      };
       const hoBtnT = $('#th-handover');
       if (hoBtnT) hoBtnT.onclick = async () => {
         hoBtnT.disabled = true; hoBtnT.textContent = 'APPROVE IN WALLET…';
@@ -5596,6 +5633,94 @@
     }
     if (btn) { btn.disabled = false; btn.textContent = '🔄 REFRESH SMACK HOUSE'; }
   }
+  /* --- house odds + rewards saves (admin, on-chain) -------------------- */
+  async function saveSolHouse(btnEl) {
+    const v = k => +((document.querySelector('#admin-house [data-cfg="' + k + '"]') || {}).value || 0);
+    const win = v('house_win_bps'), pay = v('house_payout_bps'), max = v('house_max_bps'), burn = v('house_burn_bps');
+    // Never write a half-loaded row: a stale "undefined" prefill parses
+    // to NaN, and 0 for the risk cap would block every bet.
+    if (![win, pay, max, burn].every(Number.isFinite) || !(win > 0 && pay >= 10000 && max > 0 && burn >= 0)) {
+      toast('⚠️ Those numbers look off — tap REFRESH VAULT and try again', 3000); return;
+    }
+    btnEl.disabled = true; btnEl.textContent = 'APPROVE IN WALLET…';
+    try {
+      await SAK.SolanaHouse.setHouseConfig(win, pay, max, burn);
+      toast('✅ SOL house odds saved', 3000);
+    } catch (e) {
+      const m = String((e && e.message) || '');
+      toast(/reject|denied|cancel/i.test(m) ? 'Save cancelled in wallet' : '⚠️ SOL save failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
+    }
+    btnEl.disabled = false; btnEl.textContent = '💾 SAVE SOL HOUSE ODDS';
+    refreshAdminVault();
+  }
+
+  async function refreshAdminRewards() {
+    const stEl = $('#admin-rewards-status');
+    try {
+      const TH = SAK.SolanaTokenHouse, H = SAK.SolanaHouse;
+      const [thRw, solRw] = await Promise.all([
+        TH && TH.getRewardsState ? TH.getRewardsState().catch(() => null) : null,
+        H && H.getRewardsState ? H.getRewardsState().catch(() => null) : null,
+      ]);
+      const rw = (thRw && thRw.initialized) ? thRw : (solRw && solRw.initialized) ? solRw : null;
+      if (rw) {
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        setVal('admin-rewards-pool', rw.rewardsPool);
+        setVal('admin-rewards-buyback', rw.buybackWallet);
+        setVal('admin-rewards-bps', rw.rewardsBps);
+        setVal('admin-rewards-buyback-bps', rw.buybackBps);
+      }
+      if (TH && TH.poolAtaStatus) {
+        const pool = (rw ? rw.rewardsPool : (document.getElementById('admin-rewards-pool') || {}).value || '').trim();
+        if (pool) {
+          const s = await TH.poolAtaStatus(pool).catch(() => null);
+          if (stEl) stEl.textContent = !s ? 'Pool status unavailable right now.'
+            : s.exists ? 'Pool token account: ready ✅'
+            : 'Pool token account: MISSING — tap CREATE below before SPL rewards go live, or SPL bets will fail once rewards are active.';
+        }
+      }
+    } catch (e) { if (stEl) stEl.textContent = 'Pool status unavailable right now.'; }
+  }
+
+  async function saveAdminRewards(btnEl) {
+    const pool = (document.getElementById('admin-rewards-pool') || {}).value || '';
+    const buyback = (document.getElementById('admin-rewards-buyback') || {}).value || '';
+    const rb = +((document.getElementById('admin-rewards-bps') || {}).value || 0);
+    const bb = +((document.getElementById('admin-rewards-buyback-bps') || {}).value || 0);
+    const okAddr = a => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test((a || '').trim());
+    if (!okAddr(pool) || !okAddr(buyback)) { toast('⚠️ Check the pool and buyback wallet addresses', 3000); return; }
+    if (![rb, bb].every(Number.isFinite) || rb < 0 || bb < 0 || rb > 500 || bb > 500) {
+      toast('⚠️ Rates must be 0–500 basis points (max 5%)', 3000); return;
+    }
+    btnEl.disabled = true; btnEl.textContent = 'APPROVE IN WALLET (1 OF 2)…';
+    try {
+      await SAK.SolanaHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb);
+      btnEl.textContent = 'APPROVE IN WALLET (2 OF 2)…';
+      await SAK.SolanaTokenHouse.setRewardsConfig(pool.trim(), buyback.trim(), rb, bb);
+      toast('✅ Rewards pool saved to both houses', 3000);
+    } catch (e) {
+      const m = String((e && e.message) || '');
+      toast(/reject|denied|cancel/i.test(m) ? 'Save cancelled in wallet (the other house may already be saved — check the status)' : '⚠️ Rewards save failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
+    }
+    btnEl.disabled = false; btnEl.textContent = '💾 SAVE REWARDS POOL';
+    refreshAdminRewards();
+  }
+
+  async function createPoolAta(btnEl) {
+    const pool = (document.getElementById('admin-rewards-pool') || {}).value || '';
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pool.trim())) { toast('⚠️ Check the pool wallet address first', 3000); return; }
+    btnEl.disabled = true; btnEl.textContent = 'APPROVE IN WALLET…';
+    try {
+      const r = await SAK.SolanaTokenHouse.ensurePoolAta(pool.trim());
+      toast(r.created ? '✅ Pool token account created' : 'Pool token account already exists ✅', 3000);
+    } catch (e) {
+      const m = String((e && e.message) || '');
+      toast(/reject|denied|cancel/i.test(m) ? 'Create cancelled in wallet' : '⚠️ Create failed: ' + (m ? m.slice(-110) : 'unknown error'), 6500);
+    }
+    btnEl.disabled = false; btnEl.textContent = '🏦 CREATE POOL TOKEN ACCOUNT';
+    refreshAdminRewards();
+  }
+
   async function settleTokenOpenBet(btnEl) {
     const b = tokenOpenBetsCache[Number(btnEl.dataset.th)];
     if (!b) return;
@@ -5952,6 +6077,13 @@
     const thBtn = $('#admin-tokenhouse-refresh');
     if (thBtn) thBtn.onclick = () => { A.click(); refreshAdminTokenHouse(); };
     refreshAdminTokenHouse();
+    const hsBtn = $('#admin-house-save');
+    if (hsBtn) hsBtn.onclick = () => { A.click(); saveSolHouse(hsBtn); };
+    const rwBtn = $('#admin-rewards-save');
+    if (rwBtn) rwBtn.onclick = () => { A.click(); saveAdminRewards(rwBtn); };
+    const ataBtn = $('#admin-rewards-ata');
+    if (ataBtn) ataBtn.onclick = () => { A.click(); createPoolAta(ataBtn); };
+    refreshAdminRewards();
     const plBtn = $('#admin-players-refresh');
     if (plBtn) plBtn.onclick = () => { A.click(); refreshAdminPlayers(); };
     refreshAdminPlayers();

@@ -521,6 +521,8 @@
           <h4>HOUSE ODDS (solo vs house)</h4>
           <div id="admin-house"></div>
           <p class="fine dark" id="admin-edge"></p>
+          <button class="btn btn-gold" id="admin-house-save" style="width:100%;">💾 SAVE SOL HOUSE ODDS</button>
+          <p class="fine dark">Writes win rate, payout, risk cap and burn to the SOL house. One wallet signature, live immediately.</p>
         </div>
         <div class="admin-sec">
           <h4>🔑 BETA CODES</h4>
@@ -562,6 +564,18 @@
           <div id="admin-tokenhouse">Token house state loads when this panel opens.</div>
           <button class="btn btn-yellow" id="admin-tokenhouse-refresh">🔄 REFRESH SMACK HOUSE</button>
           <p class="fine dark">The second house instance for the SMACK token (program <code>Hi82Vg…v3NBBH</code>, test mint <code>CBW7VQ…phggBf</code>, 6 decimals). Same odds shape as the SOL house; SPL wagers burn 1%. When the real SMACK launches, only the mint/program config changes.</p>
+        </div>
+        <div class="admin-sec">
+          <h4>🎁 REWARDS POOL</h4>
+          <p class="fine dark">Where the fee slices go. SPL bets send the rewards rate to the pool's token account; SOL bets skim the buyback rate to the buyback wallet, which the swap bot converts to $SMACK for the pool. Save writes the rewards config to BOTH houses.</p>
+          <div class="tunable"><label>Rewards pool wallet<small>receives SPL rewards</small></label><input id="admin-rewards-pool" type="text" value="FnNeJvbEZVHDHfPbTK5Uxnu1ipovoLbkz9u7kcnkWXD9" /></div>
+          <div class="tunable"><label>Buyback wallet<small>bot-held, accumulates SOL skim</small></label><input id="admin-rewards-buyback" type="text" value="J7pWVoJYGZPqjzeSv8NQ2nY5GKSos4XXbH4om9ahbXBd" /></div>
+          <div class="tunable"><label>SPL rewards rate<small>basis points (75 = 0.75%)</small></label><input id="admin-rewards-bps" type="number" step="any" value="75" /></div>
+          <div class="tunable"><label>SOL buyback rate<small>basis points (100 = 1%)</small></label><input id="admin-rewards-buyback-bps" type="number" step="any" value="100" /></div>
+          <button class="btn btn-gold" id="admin-rewards-save" style="width:100%;">💾 SAVE REWARDS POOL</button>
+          <p class="fine dark" id="admin-rewards-status" style="margin-top:6px;">Pool status loads when this panel opens.</p>
+          <button class="btn btn-yellow" id="admin-rewards-ata" style="width:100%;">🏦 CREATE POOL TOKEN ACCOUNT</button>
+          <p class="fine dark">Creates the pool's SMACK token account if it doesn't exist yet. Needed before SPL rewards go live, or SPL bets fail once rewards are active.</p>
         </div>
         <div class="admin-sec">
           <h4>👥 PLAYER SIGNUPS</h4>
@@ -622,9 +636,9 @@
 <script src="js/solana-escrow.js?v=stuck-1"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
 <script src="js/pvp-sync.js?v=stuck-1"></script>
-<script src="js/solana-house.js?v=7"></script>
+<script src="js/solana-house.js?v=8"></script>
 <script src="js/contracts.js?v=1"></script>
-<script src="js/game-v3.js?v=modalfix-1"></script>
+<script src="js/game-v3.js?v=housev2-1"></script>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </body>
 </html>
