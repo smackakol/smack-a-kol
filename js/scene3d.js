@@ -77,7 +77,7 @@ SAK.Scene3D = (function () {
   /* V2: toon gradient for cel-shaded cartoon materials.
    * V5 BOLD COMIC: 3 hard bands, much darker shadow step for graphic contrast. */
   const toonGrad = (() => {
-    const d = new Uint8Array([70, 160, 255]);
+    const d = new Uint8Array([60, 140, 255]);
     const t = new T.DataTexture(d, 3, 1, T.RedFormat);
     t.needsUpdate = true;
     return t;
@@ -102,7 +102,7 @@ SAK.Scene3D = (function () {
       target.geometry,
       new T.MeshBasicMaterial({ color: '#000000', side: T.BackSide })
     );
-    o.scale.setScalar(thickness || 1.06);
+    o.scale.setScalar(thickness || 1.07);
     o.castShadow = false; o.receiveShadow = false;
     o.userData.outline = true;
     target.add(o);
@@ -512,25 +512,25 @@ SAK.Scene3D = (function () {
     light: {
       yaw: 7.5, roll: 4.5, lean: 0.2, mouthX: 1.12, mouthY: 2.2, mouthMs: 280,
       eyeSx: 1.08, eyeSy: 0.68, sx: 1.22, sy: 0.78, sz: 1.15, squashDur: 0.28,
-      stars: 0, burstN: 12, burstSpd: 3.0, shake: 0.22, hitStop: 0.04, hop: 0.04,
+      stars: 0, burstN: 12, burstSpd: 3.0, shake: 0.26, hitStop: 0.05, hop: 0.04,
       blushAdd: 0.15, colors: ['#ffffff', '#fff27a'], ring: '#ffffff', yelpDelay: 0
     },
     medium: {
       yaw: 9.5, roll: 5.8, lean: 0.24, mouthX: 1.2, mouthY: 2.7, mouthMs: 340,
       eyeSx: 1.12, eyeSy: 0.62, sx: 1.3, sy: 0.7, sz: 1.2, squashDur: 0.34,
-      stars: 2, burstN: 18, burstSpd: 3.5, shake: 0.26, hitStop: 0.055, hop: 0.08,
+      stars: 2, burstN: 18, burstSpd: 3.5, shake: 0.32, hitStop: 0.07, hop: 0.08,
       blushAdd: 0.22, colors: ['#ffffff', '#ffd23f', '#ff9a1f'], ring: '#ffd23f', yelpDelay: 0.02
     },
     heavy: {
       yaw: 14.5, roll: 9.2, lean: 0.36, mouthX: 1.55, mouthY: 3.6, mouthMs: 440,
       eyeSx: 1.28, eyeSy: 1.38, sx: 1.42, sy: 0.55, sz: 1.28, squashDur: 0.45,
-      stars: 4, burstN: 28, burstSpd: 4.6, shake: 0.4, hitStop: 0.09, hop: 0.18,
+      stars: 4, burstN: 28, burstSpd: 4.6, shake: 0.48, hitStop: 0.11, hop: 0.18,
       blushAdd: 0.38, colors: ['#ffd23f', '#ff9a1f', '#ff4fd8', '#ffffff'], ring: '#ff9a1f', yelpDelay: 0.04
     },
     perfect: {
       yaw: 19, roll: 12.5, lean: 0.45, mouthX: 1.8, mouthY: 4.1, mouthMs: 560,
       eyeSx: 1.4, eyeSy: 1.55, sx: 1.58, sy: 0.45, sz: 1.38, squashDur: 0.58,
-      stars: 6, burstN: 40, burstSpd: 5.8, shake: 0.58, hitStop: 0.13, hop: 0.32,
+      stars: 6, burstN: 40, burstSpd: 5.8, shake: 0.68, hitStop: 0.15, hop: 0.32,
       blushAdd: 0.55, colors: ['#39ff88', '#ffd23f', '#ffffff', '#ff4fd8', '#ff7a9a'], ring: '#39ff88', yelpDelay: 0.06
     }
   };
@@ -624,6 +624,10 @@ SAK.Scene3D = (function () {
       this.pose = { lift: 0.12, swing: 0, elbow: 0.15, twist: 0, lean: 0, lunge: 0, guard: 0 };
       // damped springs for hit reactions
       this.yaw = { x: 0, v: 0 }; this.roll = { x: 0, v: 0 };
+      // Secondary-motion lag springs (graphics polish) + accessory refs.
+      this.lagHood = { x: 0, v: 0 }; this.lagChain = { x: 0, v: 0 }; this.lagHair = { x: 0, v: 0 };
+      this._prevTwist = 0;
+      this.hood = null; this.chains = []; this.hairMeshes = []; this.blobShadow = null;
       this.ko = null;               // knockout physics state
       this.fire = false;
       this.anticipate = false;      // attack-turn arm sway flag (game drives it)
@@ -638,6 +642,9 @@ SAK.Scene3D = (function () {
       const B = BODY[L.body] || BODY.classic;
       this.body = B;
       this.brows = []; // rebuilt with the head (rebuild() disposes old meshes)
+      // Graphics polish: clear accessory refs (rebuild() disposes the
+      // old meshes and re-runs the builders, which re-assign these).
+      this.hood = null; this.chains = []; this.hairMeshes = [];
       // V6 ANIME: chibi proportions — shorter body, much bigger head. Opt-in via look.chibi.
       const CH = (L.chibi === true) ? 0.88 : 1;
 
@@ -1253,7 +1260,7 @@ SAK.Scene3D = (function () {
 
     /** Hair style (avatar.hairStyle); KOLs without one keep the classic cap. */
     buildHair(hair) {
-      const H = this.head, add = (geo, x, y, z, fn) => { const m = mesh(geo, hair, x, y, z); if (fn) fn(m); H.add(m); return m; };
+      const H = this.head, add = (geo, x, y, z, fn) => { const m = mesh(geo, hair, x, y, z); if (fn) fn(m); H.add(m); this.hairMeshes.push({ m, base: m.rotation.clone() }); return m; };
       const cap = (r, arc) => add(new T.SphereGeometry(r, 18, 12, 0, Math.PI * 2, 0, Math.PI * arc), 0, 0.47, -0.04, m => { m.rotation.x = -0.35; });
       let style = this.look.hairStyle || 'short';
       // tall styles get squashed under a hat (no clipping through cap/beanie/top hat)
@@ -1522,6 +1529,7 @@ SAK.Scene3D = (function () {
         // z sits proud of the chest front so the torso occludes it
         // from behind.
         const ch = addT(new T.TorusGeometry(0.26, 0.032, 8, 24, Math.PI), material, 0, yBase + 0.02, 0.36, m => { m.rotation.z = Math.PI; });
+        this.chains.push(ch);
         outline(ch, 1.15);
         if (sparkle) {
           for (const [sx, sy] of [[-0.18, -0.16], [0, -0.24], [0.18, -0.16]]) {
@@ -1682,6 +1690,7 @@ SAK.Scene3D = (function () {
       // Hood UP — sphere shell with a front wedge open for the face.
       const GAP = 1.12; // ~64 deg face opening
       const hood = add(new T.SphereGeometry(0.64, 24, 16, Math.PI / 2 + GAP / 2, Math.PI * 2 - GAP, 0, Math.PI * 0.57), hoodMat, 0, 0.52, -0.02);
+      this.hood = hood;
       outline(hood, 1.03);
       // Hood drape (LT 2026-11-01): extend the hood down the BACK of
       // the head to the sweater — a second shell segment continuing
@@ -2972,6 +2981,18 @@ SAK.Scene3D = (function () {
 
     update(dt) {
       this.idlePhase += dt;
+      // Contact blob shadow (graphics polish): soft dark disc on the
+      // floor under the fighter. Scene-parented (never root — root
+      // scales and spins during squash/KO). Fades and spreads as
+      // the fighter rises.
+      if (this.blobShadow) {
+        const h = Math.max(0, this.root.position.y);
+        this.blobShadow.position.x = this.root.position.x;
+        this.blobShadow.position.z = this.root.position.z;
+        const bs = 1 + Math.min(h, 3) * 0.22;
+        this.blobShadow.scale.set(bs, bs, 1);
+        this.blobShadow.material.opacity = Math.max(0, 0.5 - h * 0.15);
+      }
       // knockout: ballistic flight → slapstick landing pose
       if (this.ko) {
         const k = this.ko;
@@ -3016,6 +3037,20 @@ SAK.Scene3D = (function () {
       // (negligible by contact).
       this.anticipateAmt += ((this.anticipate && !this.ko ? 1 : 0) - this.anticipateAmt) * Math.min(1, dt * 12);
       const antSway = Math.sin(this.idlePhase * 4.5) * this.anticipateAmt;
+      // Secondary-motion lag (graphics polish): hood, chains and hair
+      // trail the torso twist a beat behind, then settle. Additive
+      // rotation on the accessory mesh only — never head/torso/root
+      // (owned by tweens + the pose driver). Springs mirror yaw/roll.
+      const twistVel = dt > 0 ? (p.twist - (this._prevTwist === undefined ? p.twist : this._prevTwist)) / dt : 0;
+      this._prevTwist = p.twist;
+      const lagT = Math.max(-0.04, Math.min(0.04, -twistVel * 0.004));
+      for (const sp of [this.lagHood, this.lagChain, this.lagHair]) {
+        sp.v += (-140 * (sp.x - lagT) - 10 * sp.v) * dt;
+        sp.x += sp.v * dt;
+      }
+      if (this.hood) this.hood.rotation.z = this.lagHood.x;
+      for (const ch of this.chains) ch.rotation.z = Math.PI + this.lagChain.x;
+      for (const hm of this.hairMeshes) hm.m.rotation.set(hm.base.x + this.lagHair.x * 0.5, hm.base.y, hm.base.z + this.lagHair.x);
       this.torso.rotation.set(p.lean + idle * 0.015, p.twist + antSway * 0.18 * this.armSide, this.roll.x * 0.5);
       this.head.rotation.set(-p.lean * 0.5, this.yaw.x, this.roll.x);
       this.torso.position.y = 0.95 + idle * 0.012;
@@ -3233,6 +3268,15 @@ SAK.Scene3D = (function () {
     }
 
     dispose() {
+      // Graphics polish: the blob shadow is scene-parented, not a
+      // root child, so remove it explicitly (preview fighters never
+      // got one — the guard is a no-op there).
+      if (this.blobShadow) {
+        if (this.blobShadow.parent) this.blobShadow.parent.remove(this.blobShadow);
+        this.blobShadow.geometry.dispose();
+        this.blobShadow.material.dispose();
+        this.blobShadow = null;
+      }
       this.root.traverse(o => {
         if (o.geometry) o.geometry.dispose();
         if (o.material && !Object.values(matCache).includes(o.material)) o.material.dispose();
@@ -4392,6 +4436,32 @@ SAK.Scene3D = (function () {
     glowTex = new T.CanvasTexture(c);
     return glowTex;
   }
+  // Shared radial blob-shadow texture (graphics polish) — soft dark disc.
+  let shadowTex = null;
+  function getShadowTex() {
+    if (shadowTex) return shadowTex;
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+    grad.addColorStop(0.6, 'rgba(0,0,0,0.28)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    shadowTex = new T.CanvasTexture(c);
+    return shadowTex;
+  }
+  /** Attach a floor blob shadow to a main-scene fighter (scene-
+   * parented, never root — root scales/spins). No-op if attached. */
+  function attachBlobShadow(F) {
+    if (!F || F.blobShadow) return;
+    const m = new T.Mesh(new T.PlaneGeometry(1.7, 1.7),
+      new T.MeshBasicMaterial({ map: getShadowTex(), transparent: true, depthWrite: false, opacity: 0.5 }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(F.root.position.x, 0.02, F.root.position.z);
+    m.renderOrder = 1;
+    scene.add(m);
+    F.blobShadow = m;
+  }
   let flashes = []; // impact glow-flashes {sp, light, age, life, big}
   let flashLightPool = [], flashLightIdx = 0; // persistent pooled flash lights (see init)
   function updateParticles(dt) {
@@ -4697,7 +4767,11 @@ SAK.Scene3D = (function () {
     sun.shadow.mapSize.set(1024, 1024);
     Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 25 });
     scene.add(sun);
-    const rim = new T.DirectionalLight('#7ad7ff', 1.8); rim.position.set(-5, 4, -6); scene.add(rim); // V5: stronger rim pop
+    const rim = new T.DirectionalLight('#7ad7ff', 2.2); rim.position.set(-5, 4, -6); scene.add(rim); // V5: stronger rim pop (polish: 1.8 -> 2.2)
+    // Graphics polish: second warm rim from the opposite side so
+    // fighters read from both angles. Created in init, lives forever
+    // (never add/remove lights mid-fight — shader recompile freeze).
+    const rimWarm = new T.DirectionalLight('#ffb066', 1.2); rimWarm.position.set(5, 3, 4); scene.add(rimWarm);
     // Pooled impact-flash lights: adding/removing a PointLight mid-fight forces
     // three.js to recompile every shader (light-count change) — a multi-second
     // freeze on iPhone GPUs. These two live forever at intensity 0, so the
@@ -4729,7 +4803,7 @@ SAK.Scene3D = (function () {
 
   /** @param params player avatar params (or a look) */
   function setPlayer(params) {
-    if (!player) { player = new Fighter(SAK.PLAYER.look, -1, -1); scene.add(player.root); }   // player slaps with right hand (local -x)
+    if (!player) { player = new Fighter(SAK.PLAYER.look, -1, -1); scene.add(player.root); attachBlobShadow(player); }   // player slaps with right hand (local -x)
     player.showGloves = true; // set BEFORE rebuild so buildGloves renders (it runs inside applyAvatar)
     applyAvatar(player, params);
   }
@@ -4813,6 +4887,7 @@ SAK.Scene3D = (function () {
     if (kol) kol.dispose();
     kol = new Fighter(SAK.PLAYER.look, +1, +1);      // KOL slaps with left hand (camera side)
     scene.add(kol.root);
+    attachBlobShadow(kol);
     // TravFadd (LT 2026-11-01): opponents used to render bare-handed no
     // matter what their look carried — showGloves was only ever set on
     // the player's fighter. Honor an authored look.gloves on KOL
@@ -5271,8 +5346,12 @@ SAK.Scene3D = (function () {
       await SAK.Tween.to(p, { lift: ST.wind.lift, swing: ST.wind.swing, elbow: ST.wind.elbow, twist: sd * ST.wind.twist, lean: ST.wind.lean }, windup, E.outCubic);
     }
     if (opts.onWindupDone) opts.onWindupDone();
-    // Anticipation hold at the coil peak — the beat before the snap (longer for heavy)
-    await wait(ST.fx >= 1.5 ? 0.06 : 0.04); // anticipation hold, trimmed LT 2026-10-24
+    // Anticipation hold at the coil peak — the beat before the snap (longer for heavy).
+    // Graphics polish: settle a touch deeper into the coil during the
+    // hold (non-awaited, runs inside the existing wait — no timing change).
+    const antHoldS = ST.fx >= 1.5 ? 0.06 : 0.04;
+    SAK.Tween.to(p, { lean: p.lean - 0.03 }, antHoldS, E.outCubic);
+    await wait(antHoldS); // anticipation hold, trimmed LT 2026-10-24
 
     // 2) strike: arm whips down/forward FAST with follow-through across the body.
     // Open palm, never a punch; limp style keeps a floppy loose wrist.
@@ -5313,6 +5392,16 @@ SAK.Scene3D = (function () {
       if (opts.onImpact) opts.onImpact(null);
     } else if (opts.grade !== 'miss' && tier) {
       const R = applyHitReact(D, tier, !!opts.fire);
+      // Body squash & stretch (graphics polish): the whole defender
+      // squashes wide/flat on impact and springs back inside the
+      // face-squash window. Non-awaited — runs in parallel, slap()
+      // duration unchanged. Root scale is free here (only the
+      // attacker's root is tweened in slap()); never scale root
+      // while a KO fly-out is integrating.
+      if (!D.ko) {
+        SAK.Tween.to(D.root.scale, { x: 1.18, y: 0.72, z: 1.18 }, 0.07, SAK.Ease.outCubic)
+          .then(() => { if (!D.ko) return SAK.Tween.to(D.root.scale, { x: 1, y: 1, z: 1 }, Math.max(0.1, R.squashDur - 0.07), SAK.Ease.outBack); });
+      }
       // Faces: light slap = taunting head shake, no pain. Heavier = shock then pain/dizzy.
       try {
         if (tier === 'light') {
@@ -5357,12 +5446,16 @@ SAK.Scene3D = (function () {
       }
       if (opts.onImpact) opts.onImpact(hp);
       // Cartoon hit-stop — longer for heavier tiers, longest for devastating
-      if (R.hitStop) await wait(R.hitStop * (styleId === 'devastating' ? 1.6 : 1));
+      if (R.hitStop) await wait(R.hitStop * (styleId === 'devastating' ? 1.4 : 1));
     } else if (opts.onImpact) opts.onImpact(null);
     await strike;
-    // Follow-through: arm keeps travelling across the body after contact (heavy+ styles)
-    if (ST.fx >= 1.5 && landsHit) {
-      SAK.Tween.to(p, { swing: ST.strike.swing - 0.55, twist: -sd * (ST.strike.twist + 0.25), lean: ST.strike.lean + 0.08 }, 0.16, E.outCubic);
+    // Follow-through (graphics polish): arm keeps travelling across the
+    // body after contact — all landed styles now, scaled by style
+    // (heavy+ full, standard half, limp a third). Still 0.16s, still
+    // inside the recover window. Never overshoots the strike itself.
+    if (landsHit) {
+      const ft = ST.fx >= 1.5 ? 1 : ST.fx >= 1 ? 0.5 : 0.3;
+      SAK.Tween.to(p, { swing: ST.strike.swing - 0.55 * ft, twist: -sd * (ST.strike.twist + 0.25 * ft), lean: ST.strike.lean + 0.08 * ft }, 0.16, E.outCubic);
     }
     A.slapHand.scale.copy(handBase);
     await wait(0.12);
