@@ -58,6 +58,25 @@ SAK.Scene3D = (function () {
   let candles = [], coins = [], chartDomeCandles = [], chartDumpT = 0;
   let shake = 0, time = 0, mode = 'menu';
   let koCam = null; // { track:Fighter, offset:Vector3, until:number } — follow loser fly-out + land
+
+  /* ---- GLB fighters (LT 2026-11-05, Mertz 3D pilot) -------------------
+   * A look with `gltf` (a .glb URL) loads a real Blender model instead
+   * of the procedural build. The file is fetched ONCE and cached as an
+   * ArrayBuffer; every load parses a FRESH scene from it (so the lobby
+   * preview and the fight each get their own skeleton — never share one).
+   * Requires vendor/GLTFLoader.js (UMD bundle of r158 GLTFLoader). */
+  const glbBufCache = new Map();
+  async function loadGLB(url) {
+    let buf = glbBufCache.get(url);
+    if (!buf) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('GLB fetch failed ' + res.status + ' ' + url);
+      buf = await res.arrayBuffer();
+      glbBufCache.set(url, buf);
+    }
+    if (typeof T.GLTFLoader !== 'function') throw new Error('GLTFLoader not loaded (vendor/GLTFLoader.js)');
+    return new T.GLTFLoader().parseAsync(buf.slice(0), '');
+  }
   let hitCam = null; // { target:Fighter, w:0..1, peak, aw:0..1 } — face-cam onto the slapped fighter + wind-up stage weight back to the wide view
   let roleCam = { role: 'attack', w: 0 }; // local role framing: 0 = default fight view, 1 = local player's brace face-cam
   let camK = 1;      // aspect pull-back factor from frameCamera (narrow screens > 1)
@@ -72,6 +91,7 @@ SAK.Scene3D = (function () {
   // +25° in code-angle terms == clockwise on the top-down diagram.
   const FIGHT_AXIS_Y = -25 * Math.PI / 180;
   const _UP_Y = new T.Vector3(0, 1, 0);
+  const _q1 = new T.Quaternion(), _e1 = new T.Euler(); // applyArm GLB pose temps
 
   const matCache = {};
   /* V2: toon gradient for cel-shaded cartoon materials.
@@ -1370,8 +1390,97 @@ SAK.Scene3D = (function () {
         this.root.remove(c);
       });
       this.look = look; this.hitFX = null; this.fire = false;
-      this.build();
+      // GLB look (Mertz 3D): load the real Blender model instead of the
+      // procedural build. Everything else (pose driver, slap, KO) runs
+      // unchanged against the GLB bones via the rig mapping in buildGLB.
+      if (look && look.gltf) { this.buildGLB(look); }
+      else { this.isGLB = false; this.build(); }
       this.resetPose();
+    }
+
+    /** GLB-backed fighter: dummy rig (rotation targets + world-position
+     * anchors) until the model loads, then the real bones take over.
+     * The game's pose driver, slap() and knockout() run unchanged:
+     * they write rotations to this.torso / this.head / this.arms, and
+     * applyArm() flips y/z for the GLB's down bones (see there). The
+     * baked clips in the GLB are NOT played in a fight — the procedural
+     * pose driver owns the bones (the clips are for the preview page). */
+    buildGLB(look) {
+      this.isGLB = true;
+      this.gltfURL = look.gltf;
+      this.glbReady = false;
+      this._glbToken = (this._glbToken || 0) + 1;
+      const token = this._glbToken;
+      // Dummy rig: torso/head/skull form a chain under root so
+      // headWorld() stays meaningful before the model arrives; the arms
+      // are detached rotation targets (applyArm writes are harmless).
+      this.torso = new T.Group(); this.torso.position.y = 0.95; this.root.add(this.torso);
+      this.head = new T.Group(); this.head.position.y = 0.98; this.torso.add(this.head);
+      this.skull = new T.Group(); this.head.add(this.skull);
+      this.skullBase = new T.Vector3(1, 1, 1);
+      this.arms = {};
+      for (const side of [-1, 1]) {
+        this.arms[side] = { shoulder: new T.Group(), elbow: new T.Group(), hand: new T.Group(), handMat: null, side };
+      }
+      // Face/damage stand-ins: the GLB face is static (no morphing), so
+      // setExpression / setDamage / setBruise write to these dummies.
+      // applyHitReact reads blushMat.opacity and bruiseLevel directly.
+      this.rage = { visible: false };
+      this.brows = []; this.eyes = new T.Group(); this.xEyes = new T.Group();
+      this.mouth = new T.Group();
+      this.mouthShapes = {
+        neutral: { sx: 0.22, sy: 0.07, y: 0.2 },
+        open:    { sx: 0.16, sy: 0.22, y: 0.16 },
+        grimace: { sx: 0.3, sy: 0.05, y: 0.2 },
+        grin:    { sx: 0.28, sy: 0.1, y: 0.2 },
+      };
+      this.teeth = null; this.lids = [];
+      this.blushMat = { opacity: 0 }; this.bruiseMat = { opacity: 0 }; this.cutMat = { opacity: 0 };
+      this.bruiseLevel = 0;
+      this.hood = null; this.chains = []; this.hairMeshes = [];
+      this.bodyMesh = null; this.bellyMesh = null; this.maxDamage = null; this.maxDamageVariant = -1;
+      loadGLB(this.gltfURL).then(gltf => {
+        if (token !== this._glbToken || !this.root.parent) return; // stale: rebuilt or disposed
+        this.root.remove(this.torso); // drop the dummy chain
+        // The GLB is built at the game's cartoon scale in Blender
+        // (~3.02 units tall, matching the procedural fighters). Do NOT
+        // scale the scene here: scaling a skinned GLB after load breaks
+        // the arm skinning (stretched/stuck-up arms, LT 2026-11-05),
+        // and re-binding double-scales him. The scale lives in the
+        // source model (mertz-blender.py game-scale block: origins to
+        // world origin first, then scale, so it is about the feet).
+        this.root.add(gltf.scene);
+        this._glb = gltf;
+        const byName = n => gltf.scene.getObjectByName(n);
+        this.torso = byName('chest') || byName('spine');
+        this.head = byName('head');
+        this.skull = this.head; // head bone: world pos = head centre (the
+        // fused body mesh has no separate head mesh), and hitFX squash
+        // scales it just like the procedural skull.
+        this.skullBase = new T.Vector3(1, 1, 1);
+        for (const side of [-1, 1]) {
+          const s = side < 0 ? 'L' : 'R';
+          // applyArm's shoulder pivot = the shoulder bone; its elbow
+          // pivot = the forearm bone (rotating it bends the elbow).
+          // Store each bone's rest quaternion: GLB bones carry a
+          // non-identity rest rotation (shoulder is 180deg about X),
+          // and applyArm composes the pose on top of it instead of
+          // overwriting it (overwriting flips the arm up).
+          const sh = byName('shoulder' + s), el = byName('forearm' + s);
+          this.arms[side] = { shoulder: sh, elbow: el, hand: byName('hand' + s), handMat: null, side,
+            shoulderRest: sh ? sh.quaternion.clone() : null, elbowRest: el ? el.quaternion.clone() : null };
+        }
+        this.glbReady = true;
+      }).catch(e => {
+        // Load failed (missing file / no loader): fall back to the
+        // procedural build so the fight still has a visible opponent.
+        console.warn('GLB load failed, falling back to procedural build:', this.gltfURL, e);
+        if (token !== this._glbToken || !this.root.parent) return;
+        this.root.remove(this.torso);
+        this.isGLB = false;
+        this.build();
+        this.resetPose();
+      });
     }
 
     /** Facial expression: neutral | focused | shock | pain | dizzy | grin | ko.
@@ -2975,8 +3084,24 @@ SAK.Scene3D = (function () {
     /** Apply a pose to one arm. lift = sideways raise, swing >0 back / <0 forward. */
     applyArm(arm, lift, swing, elbow) {
       const s = arm.side;
-      arm.shoulder.rotation.set(0, s * swing, s * lift);
-      arm.elbow.rotation.set(0, 0, s * elbow);
+      // GLB bones are DOWN bones: in three.js their local Y points down
+      // and local Z points backward (measured, see mertz-blender.py), so
+      // the game's y/z rotations flip sign vs the procedural
+      // shoulder/elbow groups. Up bones (chest/head) are world-aligned
+      // and need no mapping.
+      const m = this.isGLB ? -1 : 1;
+      if (this.isGLB && arm.shoulderRest && arm.elbowRest) {
+        // Compose the pose on top of the bone's rest orientation.
+        // Overwriting rotation discards the rest quaternion (shoulder
+        // is 180deg about X) and flips the arm straight up.
+        _q1.setFromEuler(_e1.set(0, m * s * swing, m * s * lift));
+        arm.shoulder.quaternion.copy(arm.shoulderRest).multiply(_q1);
+        _q1.setFromEuler(_e1.set(0, 0, m * s * elbow));
+        arm.elbow.quaternion.copy(arm.elbowRest).multiply(_q1);
+      } else {
+        arm.shoulder.rotation.set(0, m * s * swing, m * s * lift);
+        arm.elbow.rotation.set(0, 0, m * s * elbow);
+      }
     }
 
     update(dt) {
@@ -3053,7 +3178,9 @@ SAK.Scene3D = (function () {
       for (const hm of this.hairMeshes) hm.m.rotation.set(hm.base.x + this.lagHair.x * 0.5, hm.base.y, hm.base.z + this.lagHair.x);
       this.torso.rotation.set(p.lean + idle * 0.015, p.twist + antSway * 0.18 * this.armSide, this.roll.x * 0.5);
       this.head.rotation.set(-p.lean * 0.5, this.yaw.x, this.roll.x);
-      this.torso.position.y = 0.95 + idle * 0.012;
+      // GLB: the torso IS the chest bone — its position is part of the
+      // skeleton, never move it (only the procedural torso Group bobs).
+      if (!this.isGLB) this.torso.position.y = 0.95 + idle * 0.012;
       // Lunge runs along the (rotated) facing direction, not world z.
       this.root.position.x = this.homeX + this.faceX * p.lunge;
       this.root.position.z = this.homeZ + this.faceZ * p.lunge;
@@ -3099,10 +3226,11 @@ SAK.Scene3D = (function () {
 
     headWorld(out) { return this.skull.getWorldPosition(out || new T.Vector3()); }
 
-    setDamage(frac) { this.blushMat.opacity = Math.min(0.75, frac * 0.9); }
+    setDamage(frac) { if (this.isGLB) return; this.blushMat.opacity = Math.min(0.75, frac * 0.9); }
 
     /** Progressive cartoon bruising: black eye fades in first, cheek scratch at higher damage. */
     setBruise(frac) {
+      if (this.isGLB) return; // GLB face is static; no bruise layers
       this.bruiseLevel = frac;
       this.bruiseMat.opacity = Math.min(0.85, frac * 0.9);
       this.cutMat.opacity = frac > 0.45 ? Math.min(0.9, (frac - 0.45) * 1.6) : 0;
@@ -3192,6 +3320,9 @@ SAK.Scene3D = (function () {
 
     setFire(on) {
       this.fire = on;
+      // GLB: skinned hand meshes have no handMat to tint, and the hand
+      // bone scale is owned by slap() — just keep the flag.
+      if (this.isGLB) return;
       const m = this.arms[this.armSide].handMat;
       if (on) { m.color.set('#ffc21a'); m.emissive.set('#ff6a00'); m.emissiveIntensity = 0.9; }
       else if (this.look.flameHand) { m.color.set('#ff3b1f'); m.emissive.set('#ff1a00'); m.emissiveIntensity = 1.1; }
@@ -3206,7 +3337,7 @@ SAK.Scene3D = (function () {
       const faceY = (this.facing > 0 ? 0 : Math.PI) + FIGHT_AXIS_Y;
       this.root.rotation.set(P.rx, faceY + (P.ry || 0), P.rz || 0);
       this.root.position.y = P.y;
-      this.torso.position.y = 0.95;
+      if (!this.isGLB) this.torso.position.y = 0.95; // GLB: chest bone, never move it
       this.torso.rotation.set(P.tx || 0, P.ty || 0, P.tz || 0);
       this.head.rotation.set(P.hx || 0, P.hy || 0, P.hz || 0);
       this.applyArm(this.arms[-1], ...(P.armL || [1.2, 0.5, 0.4]));
@@ -3260,7 +3391,7 @@ SAK.Scene3D = (function () {
       this.clearHitFX();
       this.root.position.set(this.homeX, 0, this.homeZ);
       this.root.rotation.set(0, (this.facing > 0 ? 0 : Math.PI) + FIGHT_AXIS_Y, 0);
-      this.torso.position.y = 0.95;
+      if (!this.isGLB) this.torso.position.y = 0.95; // GLB: chest bone, never move it
       this.torso.rotation.set(0, 0, 0);
       this.head.rotation.set(0, 0, 0);
       this.setDamage(0);

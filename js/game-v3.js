@@ -4153,7 +4153,7 @@
    * their difficulty/accuracy data). FREE mode: no SOL, PTS only.
    * WAGER mode: SOL bet vs the house at a flat 1.9x. The classic
    * picker (same 8 + fan KOLs) stays reachable from FREE mode. */
-  const SOLO_KOL_IDS = ['choosepoornick', 'solflakey', 'minhfantasy', 'growlingkitty', 'cupsalty', 'kooked', 'fabiony', 'mertz', 'tolly', 'mikesailor', 'poorgoat', 'chairboy', 'unibonker', 'pattyspice', 'senseisol', 'travfadd', 'frankienogood', 'ansombull', 'alone'];
+  const SOLO_KOL_IDS = ['choosepoornick', 'solflakey', 'minhfantasy', 'growlingkitty', 'cupsalty', 'kooked', 'fabiony', 'mertz', 'mertz3d', 'tolly', 'mikesailor', 'poorgoat', 'chairboy', 'unibonker', 'pattyspice', 'senseisol', 'travfadd', 'frankienogood', 'ansombull', 'alone'];
   const MAX_KOL_IDS = ['elonmars', 'czb', 'supertrump']; // LT 2026-11-02: SUPER TRUMP last, after CZ-B
   const soloKols = () => SOLO_KOL_IDS.concat(MAX_KOL_IDS).map(id => SAK.KOLS.find(k => k.id === id)).filter(Boolean);
   function soloTier(k) {
@@ -4173,7 +4173,9 @@
   const maxKols = () => SAK.KOLS.filter(k => k.maxKol);
   const pickerList = () => roster().concat(maxKols());
   function maxKolProgress() {
-    const list = roster();
+    // testKol fighters (Mertz 3D) never count toward the MAX unlock, so
+    // adding a test fighter can't move the goalposts for anyone.
+    const list = roster().filter(k => !k.testKol);
     return { beaten: list.filter(k => S.beaten[k.id]).length, total: list.length };
   }
   function maxKolUnlocked() {

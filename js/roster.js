@@ -77,6 +77,17 @@ SAK.KOLS = [
     look: { skin: '#f0c8a8', shirt: '#1a1a1a', hair: '#1a1a1a', pants: '#e8e8e8', accessory: 'none', accent: '#f5a623', body: 'classic', hairStyle: 'bald', facialHair: 'beard', eyes: 'angry', eyeColor: '#1a1a1a', print: 'zec', parody: 'mertz', cardBg: '#f5a623' },
     taunts: ['Your chain is public. Mine isn\'t.', 'Shielded transactions, unshielded slaps.', 'ZEC to the moon, privacy to the max.']
   },
+  { // Mertz 3D (LT 2026-11-05): the smooth Blender GLB Mertz as a SEPARATE
+    // test fighter so LT can see how the real 3D model plays. Same stats
+    // as Mertz so the comparison is pure model. testKol: excluded from
+    // the MAX unlock beaten-count (maxKolProgress). look.gltf triggers
+    // the Scene3D GLB load path; the 2D card/avatar reuse Mertz's look.
+    id: 'mertz3d', name: 'Mertz 3D', handle: '@Mertz3DSlaps', level: 5, testKol: true,
+    tagline: 'Same Mertz. Real 3D body.',
+    difficulty: 3, hp: 155, power: 18, accuracy: 0.7, winPts: 420, minBet: 250, payout: 2.4,
+    look: { skin: '#f0c8a8', shirt: '#1a1a1a', hair: '#1a1a1a', pants: '#e8e8e8', accessory: 'none', accent: '#f5a623', body: 'classic', hairStyle: 'bald', facialHair: 'beard', eyes: 'angry', eyeColor: '#1a1a1a', print: 'zec', parody: 'mertz', cardBg: '#f5a623', gltf: 'assets/models/mertz-smooth.glb' },
+    taunts: ['Your chain is public. Mine isn\'t.', 'Shielded transactions, unshielded slaps.', 'ZEC to the moon, privacy to the max.']
+  },
   {
     id: 'tolly', name: 'Tolly', handle: '@400msSlaps', level: 6,
     tagline: 'Runs on 400ms blocks. Chews glass. Slaps faster.',
